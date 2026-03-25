@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -10,4 +5,79 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+model Instrument {
+  id                  Int       @id
+  name                String
+  ticker              String
+  isin                String?
+  urlName             String?
+  sectorId            Int?
+  marketId            Int?
+  branchId            Int?
+  countryId           Int
+  listingDate         DateTime?
+  stockPriceCurrency  String?
+  reportCurrency      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  stockPrices         StockPrice[]
+  kpiValues           KpiValue[]
+}
+
+model StockPrice {
+  id            Int        @id @default(autoincrement())
+  instrumentId  Int
+  date          DateTime
+  open          Decimal
+  high          Decimal
+  low           Decimal
+  close         Decimal
+  volume        BigInt
+  createdAt     DateTime   @default(now())
+
+  instrument    Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@unique([instrumentId, date])
+}
+
+model KpiMetadata {
+  kpiId     Int     @id
+  nameEn    String
+  nameSv    String
+  format    String?
+  isString  Boolean
+
+  kpiValues KpiValue[]
+}
+
+model KpiValue {
+  id            Int         @id @default(autoincrement())
+  instrumentId  Int
+  kpiId         Int
+  year          Int
+  value         Decimal?
+  createdAt     DateTime    @default(now())
+
+  instrument    Instrument  @relation(fields: [instrumentId], references: [id])
+  kpi           KpiMetadata @relation(fields: [kpiId], references: [kpiId])
+
+  @@unique([instrumentId, kpiId, year])
+}
+
+model Market {
+  marketId  Int     @id
+  name      String
+}
+
+model Sector {
+  sectorId  Int     @id
+  name      String
+}
+
+model Country {
+  countryId  Int     @id
+  name       String
 }
