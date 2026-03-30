@@ -1,4 +1,4 @@
-import * as fs from "fs";
+import * as fs from "node:fs";
 const PROGRESS_FILE = "./seed-progress.json";
 
 export const loadProgress = (): Set<number> => {
