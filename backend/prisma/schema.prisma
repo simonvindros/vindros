@@ -68,8 +68,11 @@ model KpiValue {
 }
 
 model Market {
-  marketId  Int     @id
-  name      String
+  marketId      Int      @id
+  name          String
+  countryId     Int
+  isIndex       Boolean
+  exchangeName  String?
 }
 
 model Sector {

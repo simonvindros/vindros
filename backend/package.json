@@ -12,7 +12,9 @@
     "prisma:studio": "prisma studio",
     "prisma:migrate": "prisma migrate dev",
     "setup": "npm run docker:up && wait-on tcp:5432 && npm run prisma:migrate",
-    "start:all": "concurrently \"npm run dev\" \"npm run prisma:studio\""
+    "start:all": "concurrently \"npm run dev\" \"npm run prisma:studio\"",
+    "seed": "cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/seed.ts",
+    "clear:prices": "ts-node src/clear.ts"
   },
   "keywords": [],
   "author": "",
@@ -20,7 +22,9 @@
   "type": "commonjs",
   "dependencies": {
     "@apollo/server": "^5.5.0",
+    "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.5.0",
+    "axios": "^1.14.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "graphql": "^16.13.2",
@@ -30,6 +34,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.2",
     "wait-on": "^9.0.4"
