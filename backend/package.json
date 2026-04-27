@@ -14,7 +14,8 @@
     "setup": "npm run docker:up && wait-on tcp:5432 && npm run prisma:migrate",
     "start:all": "concurrently \"npm run dev\" \"npm run prisma:studio\"",
     "seed": "cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/seed/main.ts",
-    "clear:prices": "ts-node src/scripts/clear.ts"
+    "clear:prices": "ts-node src/scripts/clear.ts",
+    "update:prices": "ts-node src/scripts/updatePrices.ts"
   },
   "keywords": [],
   "author": "",

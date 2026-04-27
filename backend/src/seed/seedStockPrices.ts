@@ -5,8 +5,6 @@ import { loadProgress, saveProgress } from "../lib/progress";
 
 const STOCK_PROGRESS_FILE = "./stock-progress.json";
 
-// Then everywhere you call loadProgress/saveProgress:
-
 export const seedStockPrices = async () => {
   console.log("Seeding stock prices...");
 
