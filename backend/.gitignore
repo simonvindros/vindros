@@ -3,3 +3,5 @@ node_modules
 .env
 
 /generated/prisma
+seed-progress.json
+kpi-progress.json

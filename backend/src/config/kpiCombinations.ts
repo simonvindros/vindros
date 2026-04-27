@@ -1,4 +1,4 @@
-const KPI_COMBINATIONS = [
+export const KPI_COMBINATIONS = [
   // P/E
   { kpiId: 2, reportType: "year", priceType: "mean" },
   { kpiId: 2, reportType: "year", priceType: "low" },

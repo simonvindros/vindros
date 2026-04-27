@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+dotenv.config();
 import { seedCountries } from "./seedCountries";
 import { seedMarkets } from "./seedMarkets";
 import { seedSectors } from "./seedSectors";
@@ -6,8 +7,7 @@ import { seedInstruments } from "./seedInstruments";
 import { seedKpiMetadata } from "./seedKpiMetadata";
 import { seedStockPrices } from "./seedStockPrices";
 import { prisma } from "../lib/prisma";
-
-dotenv.config();
+import { seedKpiValues } from "./seedKpiValues";
 
 const main = async () => {
   try {
@@ -17,6 +17,7 @@ const main = async () => {
     await seedInstruments();
     await seedKpiMetadata();
     await seedStockPrices();
+    await seedKpiValues();
 
     console.log("✓ Seeding complete!");
   } catch (error) {
