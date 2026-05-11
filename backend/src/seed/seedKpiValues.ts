@@ -2,6 +2,7 @@ import { api } from "../lib/api";
 import { prisma } from "../lib/prisma";
 import { loadProgress, saveProgress } from "../lib/progress";
 import { KPI_COMBINATIONS } from "../config/kpiCombinations";
+import { z } from "zod";
 
 const KPI_PROGRESS_FILE = "./kpi-progress.json";
 const DAILY_LIMIT = 9000;

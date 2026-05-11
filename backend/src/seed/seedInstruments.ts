@@ -1,5 +1,6 @@
 import { api } from "../lib/api";
 import { prisma } from "../lib/prisma";
+import { z } from "zod";
 
 export const seedInstruments = async () => {
   console.log("Seeding instruments...");
@@ -7,39 +8,56 @@ export const seedInstruments = async () => {
   const response = await api.get("/instruments");
   const instruments = response.data.instruments;
 
+  const instrumentSchema = z.object({
+    insId: z.number(),
+    name: z.string(),
+    ticker: z.string(),
+    isin: z.string().nullable(),
+    urlName: z.string().nullable(),
+    sectorId: z.number().nullable(),
+    marketId: z.number().nullable(),
+    branchId: z.number().nullable(),
+    countryId: z.number(),
+    listingDate: z.string().nullable(),
+    stockPriceCurrency: z.string().nullable(),
+    reportCurrency: z.string().nullable(),
+  });
+
   for (const instrument of instruments) {
+    const parsedInstrument = instrumentSchema.parse(instrument);
+
     await prisma.instrument.upsert({
-      where: { id: instrument.insId },
+      where: { id: parsedInstrument.insId },
       update: {
-        name: instrument.name,
-        ticker: instrument.ticker,
-        isin: instrument.isin,
-        urlName: instrument.urlName,
-        sectorId: instrument.sectorId,
-        marketId: instrument.marketId,
-        branchId: instrument.branchId,
-        countryId: instrument.countryId,
-        listingDate: instrument.listingDate
-          ? new Date(instrument.listingDate)
+        name: parsedInstrument.name,
+        ticker: parsedInstrument.ticker,
+        isin: parsedInstrument.isin,
+        urlName: parsedInstrument.urlName,
+        sectorId: parsedInstrument.sectorId,
+        marketId: parsedInstrument.marketId,
+        branchId: parsedInstrument.branchId,
+        countryId: parsedInstrument.countryId,
+        listingDate: parsedInstrument.listingDate
+          ? new Date(parsedInstrument.listingDate)
           : null,
-        stockPriceCurrency: instrument.stockPriceCurrency,
-        reportCurrency: instrument.reportCurrency,
+        stockPriceCurrency: parsedInstrument.stockPriceCurrency,
+        reportCurrency: parsedInstrument.reportCurrency,
       },
       create: {
-        id: instrument.insId,
-        name: instrument.name,
-        ticker: instrument.ticker,
-        isin: instrument.isin,
-        urlName: instrument.urlName,
-        sectorId: instrument.sectorId,
-        marketId: instrument.marketId,
-        branchId: instrument.branchId,
-        countryId: instrument.countryId,
-        listingDate: instrument.listingDate
-          ? new Date(instrument.listingDate)
+        id: parsedInstrument.insId,
+        name: parsedInstrument.name,
+        ticker: parsedInstrument.ticker,
+        isin: parsedInstrument.isin,
+        urlName: parsedInstrument.urlName,
+        sectorId: parsedInstrument.sectorId,
+        marketId: parsedInstrument.marketId,
+        branchId: parsedInstrument.branchId,
+        countryId: parsedInstrument.countryId,
+        listingDate: parsedInstrument.listingDate
+          ? new Date(parsedInstrument.listingDate)
           : null,
-        stockPriceCurrency: instrument.stockPriceCurrency,
-        reportCurrency: instrument.reportCurrency,
+        stockPriceCurrency: parsedInstrument.stockPriceCurrency,
+        reportCurrency: parsedInstrument.reportCurrency,
       },
     });
   }
