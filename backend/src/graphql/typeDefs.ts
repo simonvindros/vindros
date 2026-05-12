@@ -1,4 +1,11 @@
 const typeDefs = `#graphql
+    type Query {
+        instrument(id: Int!): Instrument
+        kpiMetadata(kpiId: Int!): KpiMetadata
+        instruments: [Instrument]
+        kpiMetadatas: [KpiMetadata]
+    }
+    
     type Instrument {
         id: Int!
         name: String!
@@ -14,12 +21,44 @@ const typeDefs = `#graphql
         reportCurrency: String
         createdAt: String!
         updatedAt: String!
-        # stockPrices: StockPrice
-        # kpiValues: KpiValue
-    }   
+        stockPrices: [StockPrice]
+        kpiValues: [KpiValue]
+    }
 
-    type Query {
-        instrument(id: Int!): Instrument
+    type KpiMetadata {
+        kpiId: Int!
+        nameEn: String!
+        nameSv: String!
+        format: String
+        isString: Boolean!
+        # kpiValues: [KpiValue]
+    }
+
+    type StockPrice {
+        id: Int!
+        instrumentId: Int!
+        date: String!
+        open: Float!
+        high: Float!
+        low: Float!
+        close: Float!
+        createdAt: String!
+        volume: String!
+        # instrument: Instrument
+    }
+
+    type KpiValue {
+        id: Int!
+        instrumentId: Int!
+        kpiId: Int!
+        reportType: String!
+        priceType: String!
+        year: Int!
+        period: Int
+        value: Float
+        createdAt: String!
+        # instrument: Instrument
+        kpi: KpiMetadata
     }
 `;
 
