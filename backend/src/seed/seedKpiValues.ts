@@ -24,6 +24,12 @@ export const seedKpiValues = async () => {
   let totalRecords = 0;
   let callsThisRun = 0;
 
+  const kpiValueSchema = z.object({
+    y: z.number(), // year
+    p: z.number().nullable(), // period
+    v: z.number().nullable(), // value
+  });
+
   for (const combination of KPI_COMBINATIONS) {
     for (const instrument of instruments) {
       const key = `${combination.kpiId}_${combination.reportType}_${combination.priceType}_${instrument.id}`;
@@ -45,15 +51,18 @@ export const seedKpiValues = async () => {
         const values = response.data.values;
 
         if (values && values.length > 0) {
-          const records = values.map((v: any) => ({
-            instrumentId: instrument.id,
-            kpiId: combination.kpiId,
-            reportType: combination.reportType,
-            priceType: combination.priceType,
-            year: v.y,
-            period: v.p ?? null,
-            value: v.v ?? null,
-          }));
+          const parsedKpiValues = z.array(kpiValueSchema).parse(values);
+          const records = parsedKpiValues.map((parsedKpiValue) => {
+            return {
+              instrumentId: instrument.id,
+              kpiId: combination.kpiId,
+              reportType: combination.reportType,
+              priceType: combination.priceType,
+              year: parsedKpiValue.y,
+              period: parsedKpiValue.p,
+              value: parsedKpiValue.v,
+            };
+          });
 
           await prisma.kpiValue.createMany({
             data: records,
