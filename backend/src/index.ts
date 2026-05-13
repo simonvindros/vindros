@@ -7,6 +7,7 @@ import { ApolloServer } from "@apollo/server";
 import resolvers from "./graphql/resolvers";
 import { prisma } from "./lib/prisma";
 import { expressMiddleware } from "@as-integrations/express5";
+import depthLimit from "graphql-depth-limit";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -14,6 +15,7 @@ const PORT = Number(process.env.PORT) || 4000;
 const server = new ApolloServer({
   typeDefs,
   resolvers,
+  validationRules: [depthLimit(5)],
 });
 
 app.get("/health", (req, res) => {

@@ -2,8 +2,8 @@ const typeDefs = `#graphql
     type Query {
         instrument(id: Int!): Instrument
         kpiMetadata(kpiId: Int!): KpiMetadata
-        instruments: [Instrument]
-        kpiMetadatas: [KpiMetadata]
+        instruments(limit: Int, offset: Int): [Instrument]
+        kpiMetadatas(limit: Int, offset: Int): [KpiMetadata]
     }
     
     type Instrument {
@@ -21,8 +21,8 @@ const typeDefs = `#graphql
         reportCurrency: String
         createdAt: String!
         updatedAt: String!
-        stockPrices: [StockPrice]
-        kpiValues: [KpiValue]
+        stockPrices(limit: Int, offset: Int): [StockPrice]
+        kpiValues(limit: Int, offset: Int): [KpiValue]
     }
 
     type KpiMetadata {
