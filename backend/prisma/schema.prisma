@@ -25,6 +25,8 @@ model Instrument {
 
   stockPrices         StockPrice[]
   kpiValues           KpiValue[]
+
+  technicalIndicator TechnicalIndicator[]
 }
 
 model StockPrice {
@@ -86,4 +88,17 @@ model Sector {
 model Country {
   countryId  Int     @id
   name       String
+}
+
+model TechnicalIndicator {
+  id Int @id @default(autoincrement())
+  instrumentId Int
+  date DateTime
+  type String
+  value Decimal
+  createdAt DateTime @default(now())
+  
+  instrument Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@unique([instrumentId, date, type])
 }
