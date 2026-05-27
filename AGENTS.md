@@ -4,9 +4,12 @@
 
 Vindros is a quant backtest app. The backend ingests Swedish stock market data from the [Börsdata API](https://apiservice.borsdata.se/v1) into a PostgreSQL database. The frontend is not yet started.
 
+Domain knowledge for the financial KPIs (P/E, P/S, margins, etc.) is documented in [docs/kpi-guide.md](docs/kpi-guide.md).
+
 ## Tech Stack
 
-- **Backend**: TypeScript, Express, Apollo Server (GraphQL), Prisma 7 (with `@prisma/adapter-pg`)
+- **Backend**: TypeScript, Express, Prisma 7 (with `@prisma/adapter-pg`)
+- **GraphQL**: Apollo Server (dependency added, not yet wired up — planned next)
 - **Database**: PostgreSQL 15 (Docker)
 - **Runtime**: Node.js with CommonJS modules (`"type": "commonjs"` in package.json)
 - **Target**: ES2020
@@ -15,7 +18,7 @@ Vindros is a quant backtest app. The backend ingests Swedish stock market data f
 
 ```bash
 cd backend
-cp .env.example .env   # Set DATABASE_URL and BORSDATA_API_KEY
+cp .env.example .env   # Then set BORSDATA_API_KEY
 npm install
 npm run setup           # Starts Docker + waits for Postgres + runs migrations
 npm run seed            # Seeds data from Börsdata API (resumable — run again to continue)
@@ -32,6 +35,7 @@ npm run dev             # Express server on :4000
 | `npm run prisma:migrate` | Run `prisma migrate dev` |
 | `npm run prisma:studio` | Open Prisma Studio GUI |
 | `npm run clear:prices` | Clear stock price data |
+| `npm run update:prices` | Fetch latest stock prices for all instruments |
 | `npm run start:all` | Dev server + Prisma Studio concurrently |
 
 ## Architecture
@@ -72,3 +76,6 @@ After schema changes, run `npm run prisma:migrate` from `backend/`.
 - Seed scripts are **resumable**: progress is tracked in `*-progress.json` files at `backend/`. Run `npm run seed` multiple times to complete large imports.
 - Seed order matters (countries → markets → sectors → instruments → kpiMetadata → stockPrices → kpiValues)
 - The Börsdata API has rate limits; seed scripts use batching and chunk processing
+- Docker container: `vindros_quant_db` (Postgres user/pass/db: `postgres`/`postgres`/`vindros_quant_db`)
+- `ts-node` is used for all dev execution (no build step needed during development)
+- No test framework yet

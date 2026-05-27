@@ -62,14 +62,14 @@ model KpiValue {
   reportType    String
   priceType     String
   year          Int
-  period        Int?
+  period        Int         @default(0)
   value         Decimal?
   createdAt     DateTime    @default(now())
 
   instrument    Instrument  @relation(fields: [instrumentId], references: [id])
   kpi           KpiMetadata @relation(fields: [kpiId], references: [kpiId])
 
-  @@unique([instrumentId, kpiId, reportType, priceType, year])
+  @@unique([instrumentId, kpiId, reportType, priceType, year, period])
 }
 
 model Market {

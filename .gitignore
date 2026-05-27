@@ -4,3 +4,12 @@ node_modules/
 .DS_Store
 dist/
 build/
+
+# Generated outputs (re-created on every run)
+backend/**/*_output.txt
+backend/vindros_signals.txt
+backend/v5_output.txt
+backend/vindros_portfolio.json
+
+# Seed progress (machine-specific state)
+backend/*-progress.json

@@ -15,7 +15,13 @@
     "start:all": "concurrently \"npm run dev\" \"npm run prisma:studio\"",
     "seed": "cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/seed/main.ts",
     "clear:prices": "ts-node src/scripts/clear.ts",
-    "update:prices": "ts-node src/scripts/updatePrices.ts"
+    "update:prices": "ts-node src/scripts/updatePrices.ts",
+    "update:kpis": "ts-node src/scripts/updateKpis.ts",
+    "compute:indicators": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/computeIndicators.ts",
+    "vindros": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindros.ts",
+    "vindros:signals": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindrosSignals.ts",
+    "vindros:analysis": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_analysis.ts",
+    "vindros:backtest": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_final.ts"
   },
   "keywords": [],
   "author": "",

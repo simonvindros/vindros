@@ -3,18 +3,39 @@ import { StockPriceModel } from "../../generated/prisma/models";
 export const sma = ({
   days,
   prices,
-  index,
+  todaysIndex,
 }: {
   days: number;
   prices: number[];
-  index: number;
+  todaysIndex: number;
 }): number => {
-  const window = prices.slice(Math.max(0, index - days), index + 1);
+  const window = prices.slice(Math.max(0, todaysIndex - days), todaysIndex + 1);
   const sum = window.reduce((acc, price) => acc + price, 0);
   return sum / window.length;
 };
 
-export const linearRegression = (prices: number[]) => {
+export const ema = ({ days, prices }: { days: number; prices: number[] }) => {
+  // EMAt = closet * k + EMA(t-1) * (1-k) ///// k = 2/(n+1)
+  const k = 2 / (days + 1);
+
+  // Seed: SMA of first `days` prices
+  const seed =
+    prices.slice(0, days).reduce((acc, price) => acc + price, 0) / days;
+
+  const results: { index: number; value: number }[] = [
+    { index: days - 1, value: seed },
+  ];
+
+  for (let i = days; i < prices.length; i++) {
+    const previousEma = results[results.length - 1].value;
+    const currentEma = prices[i] * k + previousEma * (1 - k);
+    results.push({ index: i, value: currentEma });
+  }
+
+  return results;
+};
+
+export const linearRegression = (prices:   number[]) => {
   if (prices.length < 60) {
     return { r2: 0, slope: 0 };
   }

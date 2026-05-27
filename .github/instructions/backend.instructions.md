@@ -13,3 +13,5 @@ applyTo: "backend/src/**"
 - API client: import from `../lib/api` — automatically includes Börsdata auth key
 - Environment variables loaded via `dotenv` at entrypoints only (`index.ts`, `seed/main.ts`)
 - Use `upsert` for idempotent reference data writes, `createMany({ skipDuplicates: true })` for bulk inserts
+- Prisma 7 uses `prisma.config.ts` at `backend/` for datasource config — not in `schema.prisma`
+- GraphQL (Apollo Server) is a dependency but not yet wired up — `src/index.ts` currently serves Express only
