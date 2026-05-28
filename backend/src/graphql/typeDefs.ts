@@ -23,6 +23,7 @@ const typeDefs = `#graphql
         updatedAt: String!
         stockPrices(limit: Int, offset: Int): [StockPrice]
         kpiValues(limit: Int, offset: Int): [KpiValue]
+        technicalIndicators(limit: Int, offset: Int): [TechnicalIndicator]
     }
 
     type KpiMetadata {
@@ -59,6 +60,16 @@ const typeDefs = `#graphql
         createdAt: String!
         # instrument: Instrument
         kpi: KpiMetadata
+    }
+
+    type TechnicalIndicator {
+        id: Int!
+        instrumentId: Int!
+        date: String!
+        type: String!
+        value: Float
+        createdAt: String!
+        # instrument: Instrument
     }
 `;
 

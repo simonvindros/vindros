@@ -35,7 +35,7 @@ export const ema = ({ days, prices }: { days: number; prices: number[] }) => {
   return results;
 };
 
-export const linearRegression = (prices:   number[]) => {
+export const linearRegression = (prices: number[]) => {
   if (prices.length < 60) {
     return { r2: 0, slope: 0 };
   }

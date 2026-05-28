@@ -102,3 +102,16 @@ model TechnicalIndicator {
 
   @@unique([instrumentId, date, type])
 }
+
+model StockSplit {
+  id            Int      @id @default(autoincrement())
+  instrumentId  Int
+  splitType     String   // S = split, RS = reverse split, F = fondemission, N = nyemission, D = delning
+  ratio         String   // Raw ratio string from API (e.g. "3:1", "1:10")
+  splitDate     DateTime
+  ratioFactor   Decimal  // Computed: price multiplier for pre-split prices (e.g. RS 1:10 → 10.0, S 3:1 → 0.333)
+  applied       Boolean  @default(false) // Whether this split has been applied to StockPrice data
+  createdAt     DateTime @default(now())
+
+  @@unique([instrumentId, splitDate])
+}

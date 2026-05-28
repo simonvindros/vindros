@@ -62,6 +62,19 @@ const resolvers = {
         skip: offset,
       });
     },
+    technicalIndicators: (
+      parent: any,
+      args: { limit?: number; offset?: number },
+      context: any,
+    ) => {
+      const { limit = 100, offset = 0 } = args;
+
+      return context.prisma.technicalIndicator.findMany({
+        where: { instrumentId: parent.id },
+        take: Math.min(limit, 500),
+        skip: offset,
+      });
+    },
   },
   KpiValue: {
     kpi: (parent: any, args: any, context: any) => {

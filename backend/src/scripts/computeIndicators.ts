@@ -41,7 +41,8 @@ function linearRegression(prices: number[]): { slope: number; r2: number } {
   const sumY2 = yAxis.reduce((s, y) => s + y * y, 0);
 
   const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const r2 = Math.pow(n * sumXY - sumX * sumY, 2) /
+  const r2 =
+    Math.pow(n * sumXY - sumX * sumY, 2) /
     ((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
   return { slope, r2: isNaN(r2) ? 0 : r2 };
 }
@@ -74,13 +75,17 @@ export const computeIndicators = async () => {
   console.log(`  ${instruments.length} instruments to process`);
 
   // Find the latest computed date per instrument (to skip already-done work)
-  const latestComputed = await prisma.$queryRaw<Array<{ instrumentId: number; maxDate: Date }>>`
+  const latestComputed = await prisma.$queryRaw<
+    Array<{ instrumentId: number; maxDate: Date }>
+  >`
     SELECT "instrumentId", MAX(date) as "maxDate"
     FROM "TechnicalIndicator"
     WHERE type = 'slope_90d'
     GROUP BY "instrumentId"
   `;
-  const latestMap = new Map(latestComputed.map((r) => [r.instrumentId, r.maxDate]));
+  const latestMap = new Map(
+    latestComputed.map((r) => [r.instrumentId, r.maxDate]),
+  );
 
   let totalInserted = 0;
   let skipped = 0;
@@ -106,7 +111,9 @@ export const computeIndicators = async () => {
     let startIdx = WARMUP_DAYS;
     if (lastComputed) {
       const lastStr = lastComputed.toISOString().slice(0, 10);
-      const idx = dates.findIndex((d) => d.toISOString().slice(0, 10) > lastStr);
+      const idx = dates.findIndex(
+        (d) => d.toISOString().slice(0, 10) > lastStr,
+      );
       if (idx === -1) {
         skipped++;
         continue; // all dates already computed
@@ -119,7 +126,12 @@ export const computeIndicators = async () => {
     const ema200 = computeEma(closes, EMA_LONG);
 
     // Build records for new dates only
-    const records: Array<{ instrumentId: number; date: Date; type: string; value: number }> = [];
+    const records: Array<{
+      instrumentId: number;
+      date: Date;
+      type: string;
+      value: number;
+    }> = [];
 
     for (let i = startIdx; i < closes.length; i++) {
       const date = dates[i];
@@ -129,21 +141,41 @@ export const computeIndicators = async () => {
         const slice = closes.slice(i - REG_PERIOD + 1, i + 1);
         const reg = linearRegression(slice);
         if (isFinite(reg.slope) && !isNaN(reg.slope)) {
-          records.push({ instrumentId: instrument.id, date, type: "slope_90d", value: reg.slope * 252 });
+          records.push({
+            instrumentId: instrument.id,
+            date,
+            type: "slope_90d",
+            value: reg.slope * 252,
+          });
         }
         if (isFinite(reg.r2) && !isNaN(reg.r2)) {
-          records.push({ instrumentId: instrument.id, date, type: "r2_90d", value: reg.r2 });
+          records.push({
+            instrumentId: instrument.id,
+            date,
+            type: "r2_90d",
+            value: reg.r2,
+          });
         }
       }
 
       // EMA 50
       if (isFinite(ema50[i]) && !isNaN(ema50[i])) {
-        records.push({ instrumentId: instrument.id, date, type: "ema_50", value: ema50[i] });
+        records.push({
+          instrumentId: instrument.id,
+          date,
+          type: "ema_50",
+          value: ema50[i],
+        });
       }
 
       // EMA 200
       if (isFinite(ema200[i]) && !isNaN(ema200[i])) {
-        records.push({ instrumentId: instrument.id, date, type: "ema_200", value: ema200[i] });
+        records.push({
+          instrumentId: instrument.id,
+          date,
+          type: "ema_200",
+          value: ema200[i],
+        });
       }
     }
 
@@ -160,12 +192,17 @@ export const computeIndicators = async () => {
   }
 
   console.log(`\n  ✓ Computed ${totalInserted} indicator values`);
-  console.log(`  ✓ Skipped ${skipped} instruments (already up-to-date or insufficient data)`);
+  console.log(
+    `  ✓ Skipped ${skipped} instruments (already up-to-date or insufficient data)`,
+  );
 };
 
 // Run directly
 if (require.main === module) {
   computeIndicators()
-    .catch((err) => { console.error(err); process.exit(1); })
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    })
     .finally(() => prisma.$disconnect());
 }

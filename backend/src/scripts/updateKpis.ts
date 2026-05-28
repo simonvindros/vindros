@@ -79,12 +79,17 @@ export const updateKpis = async () => {
     console.log(`  ${label}: ${comboCount} values`);
   }
 
-  console.log(`\n✓ Updated ${totalUpserted} KPI records (${apiCalls} API calls)`);
+  console.log(
+    `\n✓ Updated ${totalUpserted} KPI records (${apiCalls} API calls)`,
+  );
 };
 
 // Run directly
 if (require.main === module) {
   updateKpis()
-    .catch((err) => { console.error(err); process.exit(1); })
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    })
     .finally(() => prisma.$disconnect());
 }

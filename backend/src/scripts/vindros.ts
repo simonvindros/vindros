@@ -34,18 +34,28 @@ async function main() {
   // 1. Docker
   step("1/5  Ensuring Docker + Postgres are running");
   try {
-    execSync("docker ps -q --filter name=vindros_quant_db", { encoding: "utf-8" });
-    const running = execSync("docker ps -q --filter name=vindros_quant_db", { encoding: "utf-8" }).trim();
+    execSync("docker ps -q --filter name=vindros_quant_db", {
+      encoding: "utf-8",
+    });
+    const running = execSync("docker ps -q --filter name=vindros_quant_db", {
+      encoding: "utf-8",
+    }).trim();
     if (running) {
       console.log("  ✓ Postgres container already running");
     } else {
       console.log("  Starting Docker + Postgres...");
-      execSync("npm run docker:up", { stdio: "inherit", cwd: __dirname + "/../.." });
+      execSync("npm run docker:up", {
+        stdio: "inherit",
+        cwd: __dirname + "/../..",
+      });
       console.log("  ✓ Postgres started");
     }
   } catch {
     console.log("  Starting Docker + Postgres...");
-    execSync("npm run docker:up", { stdio: "inherit", cwd: __dirname + "/../.." });
+    execSync("npm run docker:up", {
+      stdio: "inherit",
+      cwd: __dirname + "/../..",
+    });
     console.log("  ✓ Postgres started");
   }
 
@@ -76,7 +86,9 @@ async function main() {
   console.log(`\n  Outputs:`);
   console.log(`    • Analysis:  src/backtest/vindros_analysis_output.txt`);
   console.log(`    • Signals:   vindros_signals.txt`);
-  console.log(`    • Portfolio: vindros_portfolio.json (update after trading)\n`);
+  console.log(
+    `    • Portfolio: vindros_portfolio.json (update after trading)\n`,
+  );
 }
 
 main().catch((err) => {
