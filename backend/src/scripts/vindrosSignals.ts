@@ -17,6 +17,7 @@ import { linearRegression } from "../backtest/utils";
 const OUTPUT_FILE = path.join(__dirname, "../../vindros_signals.txt");
 const PORTFOLIO_FILE = path.join(__dirname, "../../vindros_portfolio.json");
 const INITIAL_CAPITAL = 20_000;
+const MONTHLY_CONTRIBUTION = 5_000;
 const EXECUTE_MODE = process.argv.includes("--execute");
 
 // Configuration (same as vindros_final)
@@ -347,25 +348,6 @@ const run = async () => {
 
   const allTargets = allEligible.slice(0, TOTAL_POSITIONS);
   const targetNames = new Set(allTargets.map((t) => t.name));
-  const smallInTargets = allTargets.filter((t) => t.pool === "small").length;
-  const largeInTargets = allTargets.filter((t) => t.pool === "large").length;
-
-  // Output targets
-  log("");
-  log("TARGET PORTFOLIO:");
-  log("─".repeat(60));
-  log("");
-  log(`TOP ${TOTAL_POSITIONS} (unified ranking by 90d slope):`);
-  for (let i = 0; i < allTargets.length; i++) {
-    const t = allTargets[i];
-    const tag = t.pool === "small" ? " [S]" : "";
-    log(
-      `  ${String(i + 1).padStart(2)}. ${t.name.padEnd(28)} ${t.price.toFixed(1).padStart(8)} SEK  slope: ${t.slope.toFixed(2)}${tag}`,
-    );
-  }
-  log("");
-  log(`  Composition: ${largeInTargets} Large/Mid + ${smallInTargets} Small`);
-  log(`  Qualified small caps: ${qualifiedSmall.size} (passing quality gate)`);
 
   // Diff against portfolio
   log("");
@@ -375,72 +357,25 @@ const run = async () => {
   log("");
 
   if (!portfolio) {
-    const targetPerStock = INITIAL_CAPITAL / TOTAL_POSITIONS;
-    log("  INITIAL BUY — equal weight across 15 positions:");
-    log(
-      `  Capital: ${INITIAL_CAPITAL.toLocaleString("sv-SE")} SEK → ${Math.round(targetPerStock).toLocaleString("sv-SE")} SEK/position`,
-    );
-    log("");
-    log("  Stock                          Price    Shares    Cost");
-    log("  " + "─".repeat(56));
-    let totalCost = 0;
-    const initialHoldings: Record<string, Holding> = {};
-    for (const t of allTargets) {
-      const shares = Math.floor(targetPerStock / t.price);
-      const cost = shares * t.price;
-      totalCost += cost;
-      initialHoldings[t.name] = { name: t.name, shares, avgPrice: t.price };
-      log(
-        `  ${t.name.padEnd(28)} ${t.price.toFixed(1).padStart(8)}  ${String(shares).padStart(6)}  ${cost.toFixed(0).padStart(8)} SEK`,
-      );
-    }
-    const remainingCash = INITIAL_CAPITAL - totalCost;
-    log("  " + "─".repeat(56));
-    log(
-      `  ${"TOTAL".padEnd(28)} ${"".padStart(8)}  ${"".padStart(6)}  ${totalCost.toFixed(0).padStart(8)} SEK`,
-    );
-    log(
-      `  ${"CASH REMAINING".padEnd(28)} ${"".padStart(8)}  ${"".padStart(6)}  ${remainingCash.toFixed(0).padStart(8)} SEK`,
-    );
+    portfolio = { holdings: {}, cash: INITIAL_CAPITAL, lastUpdated: "" };
+  }
 
-    if (EXECUTE_MODE) {
-      const portfolioData: Portfolio = {
-        holdings: initialHoldings,
-        cash: remainingCash,
-        lastUpdated: today,
-      };
-      fs.writeFileSync(
-        PORTFOLIO_FILE,
-        JSON.stringify(portfolioData, null, 2),
-        "utf-8",
-      );
-      log("");
-      log(`  ✓ Portfolio saved to ${PORTFOLIO_FILE}`);
-      log(
-        `    Run "npm run vindros:signals" next month to get rebalance actions.`,
-      );
-    } else {
-      log("");
-      log(
-        `  → Run with --execute to save portfolio: npm run vindros:signals -- --execute`,
-      );
-    }
-  } else {
+  {
     const heldNames = new Set(Object.keys(portfolio.holdings));
 
     // What to SELL (held but not in target)
-    const sells = [...heldNames].filter((name) => !targetNames.has(name));
+    const sells = [...heldNames].filter((name) => !targetNames.has(name)).sort((a, b) => a.localeCompare(b, "sv"));
     if (sells.length > 0) {
       log("  SELL (no longer in target):");
       for (const name of sells) {
         const h = portfolio.holdings[name];
-        log(`    ✗ ${name.padEnd(28)} ${h.shares} shares`);
+        log(`    ✗ ${name.padEnd(28)} sell all ${h.shares} shares`);
       }
       log("");
     }
 
     // What to BUY (in target but not held)
-    const buys = allTargets.filter((t) => !heldNames.has(t.name));
+    const buys = allTargets.filter((t) => !heldNames.has(t.name)).sort((a, b) => a.name.localeCompare(b.name, "sv"));
     if (buys.length > 0) {
       log("  BUY (new entries):");
       for (const t of buys) {
@@ -451,26 +386,98 @@ const run = async () => {
       log("");
     }
 
-    // What to HOLD (in both)
-    const holds = allTargets.filter((t) => heldNames.has(t.name));
-    if (holds.length > 0) {
-      log("  HOLD (still in target):");
-      for (const t of holds) {
-        const h = portfolio.holdings[t.name];
-        const currentValue = h.shares * t.price;
-        const returnPct = (t.price / h.avgPrice - 1) * 100;
-        log(
-          `    ● ${t.name.padEnd(28)} ${h.shares} shares  ${returnPct >= 0 ? "+" : ""}${returnPct.toFixed(1)}%`,
-        );
+    // Calculate total portfolio value after sells
+    let portfolioValue = portfolio.cash;
+    for (const name of heldNames) {
+      if (targetNames.has(name)) {
+        const h = portfolio.holdings[name];
+        const target = allTargets.find((t) => t.name === name);
+        if (target) portfolioValue += h.shares * target.price;
       }
-      log("");
+    }
+    // Add proceeds from sells
+    for (const name of sells) {
+      const h = portfolio.holdings[name];
+      const target = allTargets.find((t) => t.name === name);
+      const price = target ? target.price : h.avgPrice;
+      portfolioValue += h.shares * price;
+    }
+    // Add monthly contribution only on subsequent months (not the initial investment month)
+    const lastUpdated = portfolio.lastUpdated ? new Date(portfolio.lastUpdated) : null;
+    const now = new Date();
+    const isNewMonth = lastUpdated && (
+      lastUpdated.getFullYear() < now.getFullYear() ||
+      lastUpdated.getMonth() < now.getMonth()
+    );
+    if (heldNames.size > 0 && isNewMonth) {
+      portfolioValue += MONTHLY_CONTRIBUTION;
     }
 
-    // Rebalance note
-    if (sells.length > 0 || buys.length > 0) {
-      log("  REBALANCE:");
-      log("    After executing sells/buys, equal-weight all 15 positions.");
-      log(`    Target per stock: total portfolio value ÷ 15`);
+    const targetPerStock = portfolioValue / TOTAL_POSITIONS;
+
+    log(`  REBALANCE (target: ${Math.round(targetPerStock).toLocaleString("sv-SE")} SEK/position, portfolio: ${Math.round(portfolioValue).toLocaleString("sv-SE")} SEK):`);
+    log("");
+    log("  Stock                          Current  Target   Action");
+    log("  " + "─".repeat(58));
+
+    // All target stocks sorted alphabetically
+    const allTargetsSorted = [...allTargets].sort((a, b) => a.name.localeCompare(b.name, "sv"));
+    for (const t of allTargetsSorted) {
+      const currentShares = portfolio.holdings[t.name]?.shares ?? 0;
+      const targetShares = Math.floor(targetPerStock / t.price);
+      const diff = targetShares - currentShares;
+      let action: string;
+      if (diff > 0) action = `buy ${diff}`;
+      else if (diff < 0) action = `sell ${Math.abs(diff)}`;
+      else action = "hold";
+      log(
+        `  ${t.name.padEnd(28)} ${String(currentShares).padStart(7)}  ${String(targetShares).padStart(6)}   ${action}`,
+      );
+    }
+    log("  " + "─".repeat(58));
+
+    // Show cash after rebalance
+    let totalInvested = 0;
+    for (const t of allTargets) {
+      const targetShares = Math.floor(targetPerStock / t.price);
+      totalInvested += targetShares * t.price;
+    }
+    const cashAfter = portfolioValue - totalInvested;
+    log(`  CASH AFTER REBALANCE: ${Math.round(cashAfter).toLocaleString("sv-SE")} SEK`);
+
+    // Update portfolio if executing
+    if (EXECUTE_MODE) {
+      const newHoldings: Record<string, Holding> = {};
+      for (const t of allTargets) {
+        const targetShares = Math.floor(targetPerStock / t.price);
+        const oldHolding = portfolio.holdings[t.name];
+        // Weighted average price for new buys
+        const currentShares = oldHolding?.shares ?? 0;
+        const currentAvg = oldHolding?.avgPrice ?? t.price;
+        let newAvg: number;
+        if (currentShares === 0) {
+          newAvg = t.price;
+        } else if (targetShares > currentShares) {
+          // Buying more — blend avg price
+          const newShares = targetShares - currentShares;
+          newAvg = (currentShares * currentAvg + newShares * t.price) / targetShares;
+        } else {
+          // Selling or holding — keep existing avg
+          newAvg = currentAvg;
+        }
+        newHoldings[t.name] = { name: t.name, shares: targetShares, avgPrice: newAvg };
+      }
+      const portfolioData: Portfolio = {
+        holdings: newHoldings,
+        cash: cashAfter,
+        lastUpdated: today,
+      };
+      fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(portfolioData, null, 2), "utf-8");
+      log("");
+      log(`  ✓ Portfolio updated → ${PORTFOLIO_FILE}`);
+    } else {
+      log("");
+      log(`  → Run with --execute to save: npm run vindros:signals -- --execute`);
     }
   }
 

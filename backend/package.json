@@ -20,8 +20,7 @@
     "compute:indicators": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/computeIndicators.ts",
     "vindros": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindros.ts",
     "vindros:signals": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindrosSignals.ts",
-    "vindros:analysis": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_analysis.ts",
-    "vindros:backtest": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_final.ts"
+    "vindros:analysis": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_analysis.ts"
   },
   "keywords": [],
   "author": "",
