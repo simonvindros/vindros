@@ -24,24 +24,23 @@ const log = (msg = "") => {
 // ─── Configuration (same as vindros_final) ───────────────────────────────────
 const START_DATE = new Date("2010-01-01");
 const END_DATE = new Date("2026-05-27");
-const LARGE_MID_SLOTS = 10;
-const SMALL_SLOTS = 5;
-const TOTAL_POSITIONS = LARGE_MID_SLOTS + SMALL_SLOTS;
-const MAX_ADV_FRACTION = 0.1; // Position must be <10% of 20-day avg daily turnover
+const TOTAL_POSITIONS = 15;
+const MAX_ADV_FRACTION = 0.1;
 const INITIAL_CAPITAL = 20_000;
 const MONTHLY_CONTRIBUTION = 5_000;
 const BENCHMARK_ID = 638;
 const REG_SHORT = 90;
 const MIN_PRICE = 10;
+const MIN_R2 = 0.6;
 const SALARY_DAY = 23;
 const LARGE_MID_MARKETS = [1, 2];
 const SMALL_MARKETS = [3, 4, 5];
 
 // Fundamental thresholds
-const MIN_REVENUE_GROWTH = 15;
+const MIN_REVENUE_GROWTH = 10;
 const MIN_REVENUE_MSEK = 50;
 const MIN_OPERATING_MARGIN = 5;
-const MIN_YEARS_DATA = 4;
+const MIN_YEARS_DATA = 3;
 const KPI_REVENUE_GROWTH = 94;
 const KPI_OPERATING_MARGIN = 29;
 const KPI_REVENUE = 53;
@@ -391,6 +390,7 @@ const run = async () => {
     const slice = closes.slice(idx - REG_SHORT + 1, idx + 1);
     const reg = linearRegression(slice.length >= 60 ? slice : []);
     if (reg.slope <= 0) return undefined;
+    if (reg.r2 < MIN_R2) return undefined;
     return { slope: reg.slope * 252, r2: reg.r2 };
   };
 
@@ -408,29 +408,36 @@ const run = async () => {
 
   let liquidityFiltered = 0;
 
-  const getTopFromPool = (
-    pool: number[],
+  const getUnifiedTop = (
     dateStr: string,
     count: number,
     estimatedPositionSize: number,
-    checkLiquidity: boolean,
+    qualifiedSmall: Set<number>,
   ) => {
-    type Candidate = { instrumentId: number; slope: number; r2: number };
+    type Candidate = { instrumentId: number; slope: number; r2: number; pool: "large" | "small" };
     const candidates: Candidate[] = [];
-    for (const instId of pool) {
+
+    for (const instId of largeMidIdSet) {
       const price = getPriceOnDate(instId, dateStr);
       if (!price || price < MIN_PRICE) continue;
-      if (checkLiquidity) {
-        const adv = getADV(instId, dateStr);
-        if (adv > 0 && estimatedPositionSize / adv > MAX_ADV_FRACTION) {
-          liquidityFiltered++;
-          continue;
-        }
+      const reg = getRegressionScore(instId, dateStr);
+      if (!reg) continue;
+      candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2, pool: "large" });
+    }
+
+    for (const instId of qualifiedSmall) {
+      const price = getPriceOnDate(instId, dateStr);
+      if (!price || price < MIN_PRICE) continue;
+      const adv = getADV(instId, dateStr);
+      if (adv > 0 && estimatedPositionSize / adv > MAX_ADV_FRACTION) {
+        liquidityFiltered++;
+        continue;
       }
       const reg = getRegressionScore(instId, dateStr);
       if (!reg) continue;
-      candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2 });
+      candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2, pool: "small" });
     }
+
     candidates.sort((a, b) => b.slope - a.slope);
     return candidates.slice(0, count);
   };
@@ -499,26 +506,16 @@ const run = async () => {
       }
       const estPositionSize = currentPV / TOTAL_POSITIONS;
 
-      const largeMidCandidates = getTopFromPool(
-        [...largeMidIdSet],
+      const topCandidates = getUnifiedTop(
         day,
-        LARGE_MID_SLOTS,
+        TOTAL_POSITIONS,
         estPositionSize,
-        false, // no liquidity filter on large/mid
-      );
-      const qualifiedSmallArr = [...qualifiedSmallCaps];
-      const smallCandidates = getTopFromPool(
-        qualifiedSmallArr,
-        day,
-        SMALL_SLOTS,
-        estPositionSize,
-        true, // liquidity filter on small caps
+        qualifiedSmallCaps,
       );
 
-      const allCandidateIds = new Set([
-        ...largeMidCandidates.map((c) => c.instrumentId),
-        ...smallCandidates.map((c) => c.instrumentId),
-      ]);
+      const allCandidateIds = new Set(
+        topCandidates.map((c) => c.instrumentId),
+      );
 
       // Determine sells
       const sells: {
@@ -535,10 +532,7 @@ const run = async () => {
           const price = getPriceOnDate(pos.instrumentId, day);
           if (price) {
             const ret = (price / pos.entryPrice - 1) * 100;
-            const reason =
-              pos.pool === "large"
-                ? "dropped from top 10 by slope"
-                : "dropped from top 5 by slope";
+            const reason = "dropped from top 15 by slope";
             sells.push({
               name: pos.name,
               pool: pos.pool,
@@ -559,36 +553,27 @@ const run = async () => {
         slope: number;
         reason: string;
       }[] = [];
-      for (const c of largeMidCandidates) {
+      for (let i = 0; i < topCandidates.length; i++) {
+        const c = topCandidates[i];
         if (!heldIds.has(c.instrumentId)) {
+          const tag = c.pool === "small" ? " [S]" : "";
           buys.push({
             name: nameMap.get(c.instrumentId) || "",
-            pool: "large",
+            pool: c.pool,
             slope: c.slope,
-            reason: `#${largeMidCandidates.indexOf(c) + 1} by slope (${c.slope.toFixed(2)})`,
-          });
-        }
-      }
-      for (const c of smallCandidates) {
-        if (!heldIds.has(c.instrumentId)) {
-          buys.push({
-            name: nameMap.get(c.instrumentId) || "",
-            pool: "small",
-            slope: c.slope,
-            reason: `#${smallCandidates.indexOf(c) + 1} qualified by fundamentals + slope (${c.slope.toFixed(2)})`,
+            reason: `#${i + 1} by slope (${c.slope.toFixed(2)})${tag}`,
           });
         }
       }
 
       // Rebalance
-      const totalSlots = largeMidCandidates.length + smallCandidates.length;
       let pv = cash;
       for (const pos of positions) {
         pv +=
           (getPriceOnDate(pos.instrumentId, day) || pos.entryPrice) *
           pos.shares;
       }
-      const targetPerStock = pv / Math.max(totalSlots, 1);
+      const targetPerStock = pv / Math.max(topCandidates.length, 1);
 
       // Trim overweight (free cash first)
       for (const pos of positions) {
@@ -621,11 +606,7 @@ const run = async () => {
       }
 
       // Buy new entries
-      const allNewCandidates = [
-        ...largeMidCandidates.map((c) => ({ ...c, pool: "large" as const })),
-        ...smallCandidates.map((c) => ({ ...c, pool: "small" as const })),
-      ];
-      for (const c of allNewCandidates) {
+      for (const c of topCandidates) {
         if (heldIds.has(c.instrumentId)) continue;
         const price = getPriceOnDate(c.instrumentId, day);
         if (!price) continue;
@@ -697,9 +678,9 @@ const run = async () => {
 
       // Holdings
       log("");
-      log("  CORE HOLDINGS (Large/Mid Cap — ranked by 90d slope):");
-      for (let i = 0; i < largeMidCandidates.length; i++) {
-        const c = largeMidCandidates[i];
+      log("  HOLDINGS (unified pool — ranked by 90d slope):");
+      for (let i = 0; i < topCandidates.length; i++) {
+        const c = topCandidates[i];
         const price = getPriceOnDate(c.instrumentId, day) || 0;
         const pos = positions.find((p) => p.instrumentId === c.instrumentId);
         const value = pos ? pos.shares * price : 0;
@@ -714,36 +695,12 @@ const run = async () => {
             ? `${(adv / 1e6).toFixed(1)}M`
             : `${(adv / 1e3).toFixed(0)}k`;
         const pctOfAdv = adv > 0 ? ((value / adv) * 100).toFixed(1) : "N/A";
+        const tag = c.pool === "small" ? " [S]" : "";
         log(
-          `    ${String(i + 1).padStart(2)}. ${(nameMap.get(c.instrumentId) || "").padEnd(25)} ${price.toFixed(1).padStart(8)} SEK  slope:${c.slope.toFixed(2).padStart(6)}  wt:${weight}%  ADV:${advStr} (${pctOfAdv}%)  ${held} ${returnSinceEntry}`,
+          `    ${String(i + 1).padStart(2)}. ${(nameMap.get(c.instrumentId) || "").padEnd(25)} ${price.toFixed(1).padStart(8)} SEK  slope:${c.slope.toFixed(2).padStart(6)}  wt:${weight}%  ADV:${advStr} (${pctOfAdv}%)  ${held} ${returnSinceEntry}${tag}`,
         );
-      }
-
-      log("");
-      log("  FUNDAMENTAL HOLDINGS (Quality Small Caps):");
-      if (smallCandidates.length === 0) {
-        log("    (none qualify with positive slope)");
-      } else {
-        for (let i = 0; i < smallCandidates.length; i++) {
-          const c = smallCandidates[i];
-          const price = getPriceOnDate(c.instrumentId, day) || 0;
-          const pos = positions.find((p) => p.instrumentId === c.instrumentId);
-          const value = pos ? pos.shares * price : 0;
-          const weight = ((value / portfolioValue) * 100).toFixed(1);
-          const held = pos ? `held since ${pos.entryDate}` : "new";
-          const returnSinceEntry = pos
-            ? `${((price / pos.entryPrice - 1) * 100).toFixed(1)}%`
-            : "";
-          const adv = getADV(c.instrumentId, day);
-          const advStr =
-            adv >= 1e6
-              ? `${(adv / 1e6).toFixed(1)}M`
-              : `${(adv / 1e3).toFixed(0)}k`;
-          const pctOfAdv = adv > 0 ? ((value / adv) * 100).toFixed(1) : "N/A";
-          log(
-            `    ${String(i + 1).padStart(2)}. ${(nameMap.get(c.instrumentId) || "").padEnd(25)} ${price.toFixed(1).padStart(8)} SEK  slope:${c.slope.toFixed(2).padStart(6)}  wt:${weight}%  ADV:${advStr} (${pctOfAdv}%)  ${held} ${returnSinceEntry}`,
-          );
-          // Show WHY this stock qualified
+        // Show KPI explanation for small caps
+        if (c.pool === "small") {
           log(explainQualification(c.instrumentId, currentYear - 1));
         }
       }

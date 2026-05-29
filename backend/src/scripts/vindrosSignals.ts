@@ -20,22 +20,21 @@ const INITIAL_CAPITAL = 20_000;
 const EXECUTE_MODE = process.argv.includes("--execute");
 
 // Configuration (same as vindros_final)
-const LARGE_MID_SLOTS = 10;
-const SMALL_SLOTS = 5;
-const TOTAL_POSITIONS = LARGE_MID_SLOTS + SMALL_SLOTS;
+const TOTAL_POSITIONS = 15;
 const BENCHMARK_ID = 638;
 const REG_SHORT = 90;
 const MIN_PRICE = 10;
 const MAX_ADV_FRACTION = 0.1; // Position must be <10% of 20-day avg daily turnover
 const ADV_LOOKBACK = 20;
+const MIN_R2 = 0.6; // Minimum R² — exclude choppy trends
 const LARGE_MID_MARKETS = [1, 2];
 const SMALL_MARKETS = [3, 4, 5];
 
 // Fundamental thresholds
-const MIN_REVENUE_GROWTH = 15;
+const MIN_REVENUE_GROWTH = 10;
 const MIN_REVENUE_MSEK = 50;
 const MIN_OPERATING_MARGIN = 5;
-const MIN_YEARS_DATA = 4;
+const MIN_YEARS_DATA = 3;
 const KPI_REVENUE_GROWTH = 94;
 const KPI_OPERATING_MARGIN = 29;
 const KPI_REVENUE = 53;
@@ -258,6 +257,7 @@ const run = async () => {
     const slice = closes.slice(-REG_SHORT);
     const reg = linearRegression(slice);
     if (reg.slope <= 0) return undefined;
+    if (reg.r2 < MIN_R2) return undefined;
     return reg.slope * 252;
   };
 
@@ -328,43 +328,44 @@ const run = async () => {
   const estPositionSize =
     portfolioValue > 0 ? portfolioValue / TOTAL_POSITIONS : 0;
 
-  // Get targets
-  const largeMidRanked = rankPool([...largeMidIdSet], estPositionSize, false);
-  const coreTargets = largeMidRanked.slice(0, LARGE_MID_SLOTS);
-
+  // Get targets — unified pool: all eligible compete for 15 slots
   const qualifiedSmall = await getQualifiedSmallCaps(smallIds);
+
+  // Rank all eligible stocks together
+  const largeMidRanked = rankPool([...largeMidIdSet], estPositionSize, false);
   const smallRanked = rankPool(
     [...qualifiedSmall],
     estPositionSize,
     estPositionSize > 0,
   );
-  const fundTargets = smallRanked.slice(0, SMALL_SLOTS);
 
-  const allTargets = [...coreTargets, ...fundTargets];
+  // Merge and sort by slope — head-to-head competition
+  const allEligible = [
+    ...largeMidRanked.map((c) => ({ ...c, pool: "large" as const })),
+    ...smallRanked.map((c) => ({ ...c, pool: "small" as const })),
+  ].sort((a, b) => b.slope - a.slope);
+
+  const allTargets = allEligible.slice(0, TOTAL_POSITIONS);
   const targetNames = new Set(allTargets.map((t) => t.name));
+  const smallInTargets = allTargets.filter((t) => t.pool === "small").length;
+  const largeInTargets = allTargets.filter((t) => t.pool === "large").length;
 
   // Output targets
   log("");
   log("TARGET PORTFOLIO:");
   log("─".repeat(60));
   log("");
-  log("CORE (Large/Mid Cap — top 10 by 90d slope):");
-  for (let i = 0; i < coreTargets.length; i++) {
-    const t = coreTargets[i];
+  log(`TOP ${TOTAL_POSITIONS} (unified ranking by 90d slope):`);
+  for (let i = 0; i < allTargets.length; i++) {
+    const t = allTargets[i];
+    const tag = t.pool === "small" ? " [S]" : "";
     log(
-      `  ${String(i + 1).padStart(2)}. ${t.name.padEnd(28)} ${t.price.toFixed(1).padStart(8)} SEK  slope: ${t.slope.toFixed(2)}`,
+      `  ${String(i + 1).padStart(2)}. ${t.name.padEnd(28)} ${t.price.toFixed(1).padStart(8)} SEK  slope: ${t.slope.toFixed(2)}${tag}`,
     );
   }
   log("");
-  log(
-    `FUNDAMENTALS (Quality Small Caps — top 5 of ${qualifiedSmall.size} qualified):`,
-  );
-  for (let i = 0; i < fundTargets.length; i++) {
-    const t = fundTargets[i];
-    log(
-      `  ${String(i + 1).padStart(2)}. ${t.name.padEnd(28)} ${t.price.toFixed(1).padStart(8)} SEK  slope: ${t.slope.toFixed(2)}`,
-    );
-  }
+  log(`  Composition: ${largeInTargets} Large/Mid + ${smallInTargets} Small`);
+  log(`  Qualified small caps: ${qualifiedSmall.size} (passing quality gate)`);
 
   // Diff against portfolio
   log("");
