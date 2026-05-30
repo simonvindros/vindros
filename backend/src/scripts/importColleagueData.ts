@@ -125,7 +125,7 @@ async function importPrices(mapping: Map<number, number>): Promise<void> {
   const pool = new Pool({
     connectionString:
       process.env.DATABASE_URL ||
-      "postgresql://postgres:postgres@localhost:5432/vindros_quant_db",
+      "postgresql://postgres:postgres@localhost:5432/vindros_quant",
   });
 
   const startLine = loadImportProgress();

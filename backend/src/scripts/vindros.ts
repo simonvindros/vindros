@@ -34,12 +34,12 @@ async function main() {
   // 1. Docker
   step("1/5  Ensuring Docker + Postgres are running");
   try {
-    execSync("docker ps -q --filter name=vindros_quant_db", {
-      encoding: "utf-8",
-    });
-    const running = execSync("docker ps -q --filter name=vindros_quant_db", {
-      encoding: "utf-8",
-    }).trim();
+    const running = execSync(
+      "docker ps -q --filter name=vindros_quant_container",
+      {
+        encoding: "utf-8",
+      },
+    ).trim();
     if (running) {
       console.log("  ✓ Postgres container already running");
     } else {
