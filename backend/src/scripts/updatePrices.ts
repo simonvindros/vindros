@@ -167,7 +167,9 @@ const detectAndFixDrift = async () => {
   for (const row of lastPrices) {
     const dateStr = row.date.toISOString().slice(0, 10);
     if (!byDate.has(dateStr)) byDate.set(dateStr, []);
-    byDate.get(dateStr)!.push({ instrumentId: row.instrumentId, close: row.close });
+    byDate
+      .get(dateStr)!
+      .push({ instrumentId: row.instrumentId, close: row.close });
   }
 
   const driftedIds: number[] = [];

@@ -414,7 +414,12 @@ const run = async () => {
     estimatedPositionSize: number,
     qualifiedSmall: Set<number>,
   ) => {
-    type Candidate = { instrumentId: number; slope: number; r2: number; pool: "large" | "small" };
+    type Candidate = {
+      instrumentId: number;
+      slope: number;
+      r2: number;
+      pool: "large" | "small";
+    };
     const candidates: Candidate[] = [];
 
     for (const instId of largeMidIdSet) {
@@ -422,7 +427,12 @@ const run = async () => {
       if (!price || price < MIN_PRICE) continue;
       const reg = getRegressionScore(instId, dateStr);
       if (!reg) continue;
-      candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2, pool: "large" });
+      candidates.push({
+        instrumentId: instId,
+        slope: reg.slope,
+        r2: reg.r2,
+        pool: "large",
+      });
     }
 
     for (const instId of qualifiedSmall) {
@@ -435,7 +445,12 @@ const run = async () => {
       }
       const reg = getRegressionScore(instId, dateStr);
       if (!reg) continue;
-      candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2, pool: "small" });
+      candidates.push({
+        instrumentId: instId,
+        slope: reg.slope,
+        r2: reg.r2,
+        pool: "small",
+      });
     }
 
     candidates.sort((a, b) => b.slope - a.slope);
@@ -513,9 +528,7 @@ const run = async () => {
         qualifiedSmallCaps,
       );
 
-      const allCandidateIds = new Set(
-        topCandidates.map((c) => c.instrumentId),
-      );
+      const allCandidateIds = new Set(topCandidates.map((c) => c.instrumentId));
 
       // Determine sells
       const sells: {

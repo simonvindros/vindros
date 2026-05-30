@@ -364,7 +364,9 @@ const run = async () => {
     const heldNames = new Set(Object.keys(portfolio.holdings));
 
     // What to SELL (held but not in target)
-    const sells = [...heldNames].filter((name) => !targetNames.has(name)).sort((a, b) => a.localeCompare(b, "sv"));
+    const sells = [...heldNames]
+      .filter((name) => !targetNames.has(name))
+      .sort((a, b) => a.localeCompare(b, "sv"));
     if (sells.length > 0) {
       log("  SELL (no longer in target):");
       for (const name of sells) {
@@ -375,7 +377,9 @@ const run = async () => {
     }
 
     // What to BUY (in target but not held)
-    const buys = allTargets.filter((t) => !heldNames.has(t.name)).sort((a, b) => a.name.localeCompare(b.name, "sv"));
+    const buys = allTargets
+      .filter((t) => !heldNames.has(t.name))
+      .sort((a, b) => a.name.localeCompare(b.name, "sv"));
     if (buys.length > 0) {
       log("  BUY (new entries):");
       for (const t of buys) {
@@ -403,25 +407,31 @@ const run = async () => {
       portfolioValue += h.shares * price;
     }
     // Add monthly contribution only on subsequent months (not the initial investment month)
-    const lastUpdated = portfolio.lastUpdated ? new Date(portfolio.lastUpdated) : null;
+    const lastUpdated = portfolio.lastUpdated
+      ? new Date(portfolio.lastUpdated)
+      : null;
     const now = new Date();
-    const isNewMonth = lastUpdated && (
-      lastUpdated.getFullYear() < now.getFullYear() ||
-      lastUpdated.getMonth() < now.getMonth()
-    );
+    const isNewMonth =
+      lastUpdated &&
+      (lastUpdated.getFullYear() < now.getFullYear() ||
+        lastUpdated.getMonth() < now.getMonth());
     if (heldNames.size > 0 && isNewMonth) {
       portfolioValue += MONTHLY_CONTRIBUTION;
     }
 
     const targetPerStock = portfolioValue / TOTAL_POSITIONS;
 
-    log(`  REBALANCE (target: ${Math.round(targetPerStock).toLocaleString("sv-SE")} SEK/position, portfolio: ${Math.round(portfolioValue).toLocaleString("sv-SE")} SEK):`);
+    log(
+      `  REBALANCE (target: ${Math.round(targetPerStock).toLocaleString("sv-SE")} SEK/position, portfolio: ${Math.round(portfolioValue).toLocaleString("sv-SE")} SEK):`,
+    );
     log("");
     log("  Stock                          Current  Target   Action");
     log("  " + "─".repeat(58));
 
     // All target stocks sorted alphabetically
-    const allTargetsSorted = [...allTargets].sort((a, b) => a.name.localeCompare(b.name, "sv"));
+    const allTargetsSorted = [...allTargets].sort((a, b) =>
+      a.name.localeCompare(b.name, "sv"),
+    );
     for (const t of allTargetsSorted) {
       const currentShares = portfolio.holdings[t.name]?.shares ?? 0;
       const targetShares = Math.floor(targetPerStock / t.price);
@@ -443,7 +453,9 @@ const run = async () => {
       totalInvested += targetShares * t.price;
     }
     const cashAfter = portfolioValue - totalInvested;
-    log(`  CASH AFTER REBALANCE: ${Math.round(cashAfter).toLocaleString("sv-SE")} SEK`);
+    log(
+      `  CASH AFTER REBALANCE: ${Math.round(cashAfter).toLocaleString("sv-SE")} SEK`,
+    );
 
     // Update portfolio if executing
     if (EXECUTE_MODE) {
@@ -460,24 +472,35 @@ const run = async () => {
         } else if (targetShares > currentShares) {
           // Buying more — blend avg price
           const newShares = targetShares - currentShares;
-          newAvg = (currentShares * currentAvg + newShares * t.price) / targetShares;
+          newAvg =
+            (currentShares * currentAvg + newShares * t.price) / targetShares;
         } else {
           // Selling or holding — keep existing avg
           newAvg = currentAvg;
         }
-        newHoldings[t.name] = { name: t.name, shares: targetShares, avgPrice: newAvg };
+        newHoldings[t.name] = {
+          name: t.name,
+          shares: targetShares,
+          avgPrice: newAvg,
+        };
       }
       const portfolioData: Portfolio = {
         holdings: newHoldings,
         cash: cashAfter,
         lastUpdated: today,
       };
-      fs.writeFileSync(PORTFOLIO_FILE, JSON.stringify(portfolioData, null, 2), "utf-8");
+      fs.writeFileSync(
+        PORTFOLIO_FILE,
+        JSON.stringify(portfolioData, null, 2),
+        "utf-8",
+      );
       log("");
       log(`  ✓ Portfolio updated → ${PORTFOLIO_FILE}`);
     } else {
       log("");
-      log(`  → Run with --execute to save: npm run vindros:signals -- --execute`);
+      log(
+        `  → Run with --execute to save: npm run vindros:signals -- --execute`,
+      );
     }
   }
 
