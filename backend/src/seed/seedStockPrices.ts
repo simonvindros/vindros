@@ -6,11 +6,14 @@ import { z } from "zod";
 
 const STOCK_PROGRESS_FILE = "./stock-progress.json";
 
-export const seedStockPrices = async () => {
-  console.log("Seeding stock prices...");
+export const seedStockPrices = async (countryId?: number) => {
+  const label = countryId ? `country ${countryId}` : "all";
+  console.log(`Seeding stock prices (${label})...`);
 
+  const where = countryId ? { countryId } : undefined;
   const instruments = await prisma.instrument.findMany({
     select: { id: true },
+    where,
   });
 
   const ids = instruments.map((i) => i.id);
@@ -21,7 +24,7 @@ export const seedStockPrices = async () => {
   console.log(`${completedIds.size} instruments already processed`);
 
   let totalRecords = 0;
-  const BATCH_LIMIT = 20; // Process max 20 batches per run
+  const BATCH_LIMIT = 500; // Process max 500 batches per run
   let batchesProcessed = 0;
 
   const priceScehma = z.object({

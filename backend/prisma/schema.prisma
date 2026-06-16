@@ -90,6 +90,12 @@ model Country {
   name       String
 }
 
+model Branch {
+  branchId  Int     @id
+  name      String
+  sectorId  Int
+}
+
 model TechnicalIndicator {
   id Int @id @default(autoincrement())
   instrumentId Int

@@ -59,8 +59,8 @@ export const seedKpiValues = async () => {
               reportType: combination.reportType,
               priceType: combination.priceType,
               year: parsedKpiValue.y,
-              period: parsedKpiValue.p,
-              value: parsedKpiValue.v,
+              period: parsedKpiValue.p ?? undefined,
+              value: parsedKpiValue.v ?? undefined,
             };
           });
 

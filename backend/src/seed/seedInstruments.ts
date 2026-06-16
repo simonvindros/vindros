@@ -2,65 +2,68 @@ import { api } from "../lib/api";
 import { prisma } from "../lib/prisma";
 import { z } from "zod";
 
-export const seedInstruments = async () => {
-  console.log("Seeding instruments...");
+const instrumentSchema = z.object({
+  insId: z.number(),
+  name: z.string(),
+  ticker: z.string(),
+  isin: z.string().nullable(),
+  urlName: z.string().nullable(),
+  sectorId: z.number().nullable(),
+  marketId: z.number().nullable(),
+  branchId: z.number().nullable(),
+  countryId: z.number(),
+  listingDate: z.string().nullable(),
+  stockPriceCurrency: z.string().nullable(),
+  reportCurrency: z.string().nullable(),
+});
 
-  const response = await api.get("/instruments");
-  const instruments = response.data.instruments;
-
-  const instrumentSchema = z.object({
-    insId: z.number(),
-    name: z.string(),
-    ticker: z.string(),
-    isin: z.string().nullable(),
-    urlName: z.string().nullable(),
-    sectorId: z.number().nullable(),
-    marketId: z.number().nullable(),
-    branchId: z.number().nullable(),
-    countryId: z.number(),
-    listingDate: z.string().nullable(),
-    stockPriceCurrency: z.string().nullable(),
-    reportCurrency: z.string().nullable(),
-  });
-
+const upsertInstruments = async (instruments: unknown[]) => {
   for (const instrument of instruments) {
-    const parsedInstrument = instrumentSchema.parse(instrument);
+    const parsed = instrumentSchema.parse(instrument);
 
     await prisma.instrument.upsert({
-      where: { id: parsedInstrument.insId },
+      where: { id: parsed.insId },
       update: {
-        name: parsedInstrument.name,
-        ticker: parsedInstrument.ticker,
-        isin: parsedInstrument.isin,
-        urlName: parsedInstrument.urlName,
-        sectorId: parsedInstrument.sectorId,
-        marketId: parsedInstrument.marketId,
-        branchId: parsedInstrument.branchId,
-        countryId: parsedInstrument.countryId,
-        listingDate: parsedInstrument.listingDate
-          ? new Date(parsedInstrument.listingDate)
-          : null,
-        stockPriceCurrency: parsedInstrument.stockPriceCurrency,
-        reportCurrency: parsedInstrument.reportCurrency,
+        name: parsed.name,
+        ticker: parsed.ticker,
+        isin: parsed.isin,
+        urlName: parsed.urlName,
+        sectorId: parsed.sectorId,
+        marketId: parsed.marketId,
+        branchId: parsed.branchId,
+        countryId: parsed.countryId,
+        listingDate: parsed.listingDate ? new Date(parsed.listingDate) : null,
+        stockPriceCurrency: parsed.stockPriceCurrency,
+        reportCurrency: parsed.reportCurrency,
       },
       create: {
-        id: parsedInstrument.insId,
-        name: parsedInstrument.name,
-        ticker: parsedInstrument.ticker,
-        isin: parsedInstrument.isin,
-        urlName: parsedInstrument.urlName,
-        sectorId: parsedInstrument.sectorId,
-        marketId: parsedInstrument.marketId,
-        branchId: parsedInstrument.branchId,
-        countryId: parsedInstrument.countryId,
-        listingDate: parsedInstrument.listingDate
-          ? new Date(parsedInstrument.listingDate)
-          : null,
-        stockPriceCurrency: parsedInstrument.stockPriceCurrency,
-        reportCurrency: parsedInstrument.reportCurrency,
+        id: parsed.insId,
+        name: parsed.name,
+        ticker: parsed.ticker,
+        isin: parsed.isin,
+        urlName: parsed.urlName,
+        sectorId: parsed.sectorId,
+        marketId: parsed.marketId,
+        branchId: parsed.branchId,
+        countryId: parsed.countryId,
+        listingDate: parsed.listingDate ? new Date(parsed.listingDate) : null,
+        stockPriceCurrency: parsed.stockPriceCurrency,
+        reportCurrency: parsed.reportCurrency,
       },
     });
   }
+};
 
-  console.log(`✓ Seeded ${instruments.length} instruments`);
+export const seedInstruments = async () => {
+  console.log("Seeding Nordic instruments...");
+  const nordicResponse = await api.get("/instruments");
+  const nordicInstruments = nordicResponse.data.instruments;
+  await upsertInstruments(nordicInstruments);
+  console.log(`✓ Seeded ${nordicInstruments.length} Nordic instruments`);
+
+  console.log("Seeding global instruments...");
+  const globalResponse = await api.get("/instruments/global");
+  const globalInstruments = globalResponse.data.instruments;
+  await upsertInstruments(globalInstruments);
+  console.log(`✓ Seeded ${globalInstruments.length} global instruments`);
 };

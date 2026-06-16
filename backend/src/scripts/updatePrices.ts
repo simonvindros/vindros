@@ -24,6 +24,16 @@ const getWeekdays = (start: Date, end: Date): string[] => {
 
 const BATCH_SIZE = 30; // Process 30 days at a time, then release memory
 
+let knownInstrumentIds: Set<number>;
+
+const loadKnownInstruments = async () => {
+  const instruments = await prisma.instrument.findMany({
+    select: { id: true },
+  });
+  knownInstrumentIds = new Set(instruments.map((i) => i.id));
+  console.log(`  Loaded ${knownInstrumentIds.size} known instruments\n`);
+};
+
 const backfillGap = async () => {
   // Find the latest date among ACTIVE instruments (those with data in last 30 days),
   // ignoring long-dead stocks that would trigger a multi-year backfill
@@ -86,15 +96,17 @@ const backfillGap = async () => {
           continue;
         }
 
-        const records = prices.map((price: any) => ({
-          instrumentId: price.i,
-          date: new Date(price.d),
-          open: price.o ?? 0,
-          high: price.h ?? 0,
-          low: price.l ?? 0,
-          close: price.c ?? 0,
-          volume: price.v != null ? BigInt(price.v) : BigInt(0),
-        }));
+        const records = prices
+          .filter((price: any) => knownInstrumentIds.has(price.i))
+          .map((price: any) => ({
+            instrumentId: price.i,
+            date: new Date(price.d),
+            open: price.o ?? 0,
+            high: price.h ?? 0,
+            low: price.l ?? 0,
+            close: price.c ?? 0,
+            volume: price.v != null ? BigInt(price.v) : BigInt(0),
+          }));
 
         const inserted = await prisma.stockPrice.createMany({
           data: records,
@@ -102,7 +114,9 @@ const backfillGap = async () => {
         });
 
         totalInserted += inserted.count;
-        console.log(`    ${date} ✓ ${inserted.count} inserted`);
+        console.log(
+          `    ${date} ✓ ${inserted.count} inserted (${prices.length - records.length} skipped)`,
+        );
       } catch (error: any) {
         console.error(`    ${date} ✗ ${error.message}`);
       }
@@ -123,22 +137,26 @@ const fetchLatest = async () => {
   const response = await api.get("/instruments/stockprices/last");
   const prices = response.data.stockPricesList;
 
-  const records = prices.map((price: any) => ({
-    instrumentId: price.i,
-    date: new Date(price.d),
-    open: price.o ?? 0,
-    high: price.h ?? 0,
-    low: price.l ?? 0,
-    close: price.c ?? 0,
-    volume: price.v != null ? BigInt(price.v) : BigInt(0),
-  }));
+  const records = prices
+    .filter((price: any) => knownInstrumentIds.has(price.i))
+    .map((price: any) => ({
+      instrumentId: price.i,
+      date: new Date(price.d),
+      open: price.o ?? 0,
+      high: price.h ?? 0,
+      low: price.l ?? 0,
+      close: price.c ?? 0,
+      volume: price.v != null ? BigInt(price.v) : BigInt(0),
+    }));
 
   const inserted = await prisma.stockPrice.createMany({
     data: records,
     skipDuplicates: true,
   });
 
-  console.log(`  ✓ ${inserted.count} latest records inserted`);
+  console.log(
+    `  ✓ ${inserted.count} latest records inserted (${prices.length - records.length} skipped)`,
+  );
 };
 
 /**
@@ -272,6 +290,9 @@ const detectAndFixDrift = async () => {
 const main = async () => {
   try {
     console.log("Updating stock prices...\n");
+
+    // Load known instruments to filter out unknown IDs from API responses
+    await loadKnownInstruments();
 
     // Phase 1: backfill any gap up to yesterday
     await backfillGap();

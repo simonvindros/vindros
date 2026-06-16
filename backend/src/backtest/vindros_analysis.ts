@@ -22,7 +22,7 @@ const log = (msg = "") => {
 };
 
 // ─── Configuration (same as vindros_final) ───────────────────────────────────
-const START_DATE = new Date("2010-01-01");
+const START_DATE = new Date("2006-07-01");
 const END_DATE = new Date("2026-05-27");
 const TOTAL_POSITIONS = 15;
 const MAX_ADV_FRACTION = 0.1;

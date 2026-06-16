@@ -22,7 +22,7 @@ const log = (msg = "") => {
 };
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const START_DATE = new Date("2010-01-01");
+const START_DATE = new Date("2006-07-01");
 const END_DATE = new Date("2026-05-27");
 const TOTAL_POSITIONS = 15;
 const INITIAL_CAPITAL = 20_000;

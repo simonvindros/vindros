@@ -20,7 +20,16 @@
     "compute:indicators": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/computeIndicators.ts",
     "vindros": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindros.ts",
     "vindros:signals": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindrosSignals.ts",
-    "vindros:analysis": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_analysis.ts"
+    "vindros:analysis": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_analysis.ts",
+    "vindros:us": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=8192 ts-node src/backtest/vindros_us.ts",
+    "seed:global": "cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/seed/seedGlobal.ts",
+    "seed:kpis": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/seed/seedKpiValuesGlobal.ts",
+    "montecarlo": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/montecarlo.ts",
+    "montecarlo:random": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/montecarlo_random.ts",
+    "montecarlo:dayshift": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/montecarlo_dayshift.ts",
+    "montecarlo:dayshift-full": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/montecarlo_dayshift_full.ts",
+    "sweep": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/parameter_sweep.ts",
+    "attribution": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/stock_attribution.ts"
   },
   "keywords": [],
   "author": "",

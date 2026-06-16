@@ -3,6 +3,7 @@ dotenv.config();
 import { seedCountries } from "./seedCountries";
 import { seedMarkets } from "./seedMarkets";
 import { seedSectors } from "./seedSectors";
+import { seedBranches } from "./seedBranches";
 import { seedInstruments } from "./seedInstruments";
 import { seedKpiMetadata } from "./seedKpiMetadata";
 import { seedStockPrices } from "./seedStockPrices";
@@ -14,6 +15,7 @@ const main = async () => {
     await seedCountries();
     await seedMarkets();
     await seedSectors();
+    await seedBranches();
     await seedInstruments();
     await seedKpiMetadata();
     await seedStockPrices();
