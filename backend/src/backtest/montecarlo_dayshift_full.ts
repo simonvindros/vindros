@@ -18,7 +18,16 @@ import * as path from "node:path";
 import { prisma } from "../lib/prisma";
 import { linearRegression } from "./utils";
 
-const OUTPUT_FILE = path.join(__dirname, "dayshift_full_output.txt");
+// Parse --reg=N from CLI args (default 90)
+const regArg = process.argv.find((a) => a.startsWith("--reg="));
+const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 90;
+
+const OUTPUT_FILE = path.join(
+  __dirname,
+  REG_WINDOW === 90
+    ? "dayshift_full_output.txt"
+    : `dayshift_full_output_${REG_WINDOW}d.txt`,
+);
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const START_DATE = new Date("2006-07-01");
@@ -28,7 +37,7 @@ const MAX_ADV_FRACTION = 0.1;
 const INITIAL_CAPITAL = 20_000;
 const MONTHLY_CONTRIBUTION = 5_000;
 const BENCHMARK_ID = 638;
-const REG_SHORT = 90;
+const REG_SHORT = REG_WINDOW;
 const MIN_PRICE = 10;
 const MIN_R2 = 0.6;
 const SALARY_DAY = 23;
@@ -342,7 +351,8 @@ async function main() {
     if (daysDiff > 7) return undefined;
     const closes = prices.map((p) => p.close);
     const slice = closes.slice(idx - REG_SHORT + 1, idx + 1);
-    const reg = linearRegression(slice.length >= 60 ? slice : []);
+    const minDataPoints = Math.floor(REG_SHORT * 0.67);
+    const reg = linearRegression(slice.length >= minDataPoints ? slice : []);
     if (reg.slope <= 0) return undefined;
     if (reg.r2 < MIN_R2) return undefined;
     return { slope: reg.slope * 252, r2: reg.r2 };

@@ -10,6 +10,10 @@ import "dotenv/config";
  * - Whether the result is statistically significant
  */
 
+// Parse --reg=N from CLI args (default 90)
+const regArg = process.argv.find((a) => a.startsWith("--reg="));
+const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 90;
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 const SIMULATIONS = 10_000;
 const INITIAL_CAPITAL = 50_000;
@@ -97,9 +101,14 @@ async function main() {
   const fs = await import("fs");
   const path = await import("path");
 
-  const outputFile = path.join(__dirname, "vindros_analysis_output.txt");
+  const outputFile = path.join(
+    __dirname,
+    REG_WINDOW === 90
+      ? "vindros_analysis_output.txt"
+      : `vindros_analysis_output_${REG_WINDOW}d.txt`,
+  );
   if (!fs.existsSync(outputFile)) {
-    console.error("Run vindros:analysis first to generate trade data.");
+    console.error(`Run vindros:analysis with --reg=${REG_WINDOW} first to generate trade data.`);
     process.exit(1);
   }
 

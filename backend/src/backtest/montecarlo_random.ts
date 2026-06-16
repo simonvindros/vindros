@@ -11,8 +11,29 @@ import "dotenv/config";
  * If random selection underperforms, the slope ranking is genuinely valuable.
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { prisma } from "../lib/prisma";
 import { linearRegression } from "./utils";
+
+// Parse --reg=N from CLI args (default 90)
+const regArg = process.argv.find((a) => a.startsWith("--reg="));
+const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 90;
+
+// Read actual Vindros result from analysis output
+function getActualResult(): number {
+  const outputFile = path.join(
+    __dirname,
+    REG_WINDOW === 90
+      ? "vindros_analysis_output.txt"
+      : `vindros_analysis_output_${REG_WINDOW}d.txt`,
+  );
+  if (!fs.existsSync(outputFile)) return REG_WINDOW === 90 ? 1618.8 : 2035.6;
+  const content = fs.readFileSync(outputFile, "utf-8");
+  const match = content.match(/Return:\s+\+?([\-\d.]+)%/);
+  return match ? parseFloat(match[1]) : 1618.8;
+}
+const VINDROS_RESULT = getActualResult();
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const SIMULATIONS = 1_000;
@@ -306,11 +327,11 @@ async function main() {
   console.log("─".repeat(70));
   console.log("COMPARISONS:");
   console.log("─".repeat(70));
-  console.log(`  VINDROS (slope ranking):  +1618.8%`);
+  console.log(`  VINDROS (slope ranking):  +${VINDROS_RESULT.toFixed(1)}%`);
   console.log(`  Random selection mean:    +${meanReturn.toFixed(1)}%`);
   console.log(`  Benchmark (OMXSPI DCA):   +${bmReturn.toFixed(1)}%`);
   console.log(
-    `  Slope ranking edge:       +${(1618.8 - meanReturn).toFixed(1)}% over random`,
+    `  Slope ranking edge:       +${(VINDROS_RESULT - meanReturn).toFixed(1)}% over random`,
   );
   console.log(
     `  Random vs index:          +${(meanReturn - bmReturn).toFixed(1)}% over benchmark`,
@@ -329,17 +350,17 @@ async function main() {
   console.log("INTERPRETATION:");
   console.log("─".repeat(70));
 
-  if (1618.8 > percentile(simReturns, 95)) {
+  if (VINDROS_RESULT > percentile(simReturns, 95)) {
     console.log(
-      "  ✓ Vindros (+1618.8%) EXCEEDS the 95th percentile of random selection.",
+      `  ✓ Vindros (+${VINDROS_RESULT.toFixed(1)}%) EXCEEDS the 95th percentile of random selection.`,
     );
     console.log(
       "  → The slope ranking is GENUINELY adding value beyond universe selection.",
     );
     console.log(
-      `  → Ranking contributes ~+${(1618.8 - meanReturn).toFixed(0)}% over 20 years.`,
+      `  → Ranking contributes ~+${(VINDROS_RESULT - meanReturn).toFixed(0)}% over 20 years.`,
     );
-  } else if (1618.8 > percentile(simReturns, 50)) {
+  } else if (VINDROS_RESULT > percentile(simReturns, 50)) {
     console.log(
       "  ~ Vindros is above median but within normal range of random selection.",
     );

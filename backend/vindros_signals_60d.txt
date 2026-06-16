@@ -1,0 +1,45 @@
+VINDROS SIGNALS (60d) — 2026-05-29
+════════════════════════════════════════════════════════════
+
+════════════════════════════════════════════════════════════
+ACTIONS:
+════════════════════════════════════════════════════════════
+
+  BUY (new entries — fresh portfolio):
+    ✓ Nokia                        ~145.5 SEK  slope: 3.23
+    ✓ Sinch                        ~37.3 SEK  slope: 2.76
+    ✓ Xvivo Perfusion              ~288.2 SEK  slope: 2.57
+    ✓ Modern Times Group A         ~134.0 SEK  slope: 2.47
+    ✓ Modern Times Group B         ~134.5 SEK  slope: 2.47
+    ✓ NCAB Group                   ~80.9 SEK  slope: 2.31
+    ✓ PowerCell                    ~31.5 SEK  slope: 2.22
+    ✓ Mycronic                     ~306.0 SEK  slope: 2.19
+    ✓ Enea                         ~87.1 SEK  slope: 2.15
+    ✓ Ependion                     ~143.0 SEK  slope: 2.08
+    ✓ Hexatronic                   ~43.4 SEK  slope: 2.04
+    ✓ Hacksaw                      ~83.9 SEK  slope: 2.00
+    ✓ Embracer                     ~68.9 SEK  slope: 1.99
+    ✓ Mildef Group                 ~187.9 SEK  slope: 1.97
+    ✓ Boozt                        ~126.8 SEK  slope: 1.93
+
+  REBALANCE (target: 1 333 SEK/position, portfolio: 20 000 SEK):
+
+  Stock                          Current  Target   Action
+  ──────────────────────────────────────────────────────────
+  Boozt                              0      10   buy 10
+  Embracer                           0      19   buy 19
+  Enea                               0      15   buy 15
+  Ependion                           0       9   buy 9
+  Hacksaw                            0      15   buy 15
+  Hexatronic                         0      30   buy 30
+  Mildef Group                       0       7   buy 7
+  Modern Times Group A               0       9   buy 9
+  Modern Times Group B               0       9   buy 9
+  Mycronic                           0       4   buy 4
+  NCAB Group                         0      16   buy 16
+  Nokia                              0       9   buy 9
+  PowerCell                          0      42   buy 42
+  Sinch                              0      35   buy 35
+  Xvivo Perfusion                    0       4   buy 4
+  ──────────────────────────────────────────────────────────
+  CASH AFTER REBALANCE: 928 SEK

@@ -14,7 +14,16 @@ import * as path from "node:path";
 import { prisma } from "../lib/prisma";
 import { linearRegression } from "./utils";
 
-const OUTPUT_FILE = path.join(__dirname, "vindros_analysis_output.txt");
+// Parse --reg=N from CLI args (default 90)
+const regArg = process.argv.find((a) => a.startsWith("--reg="));
+const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 90;
+
+const OUTPUT_FILE = path.join(
+  __dirname,
+  REG_WINDOW === 90
+    ? "vindros_analysis_output.txt"
+    : `vindros_analysis_output_${REG_WINDOW}d.txt`,
+);
 const lines: string[] = [];
 const log = (msg = "") => {
   lines.push(msg);
@@ -29,7 +38,7 @@ const MAX_ADV_FRACTION = 0.1;
 const INITIAL_CAPITAL = 20_000;
 const MONTHLY_CONTRIBUTION = 5_000;
 const BENCHMARK_ID = 638;
-const REG_SHORT = 90;
+const REG_SHORT = REG_WINDOW;
 const MIN_PRICE = 10;
 const MIN_R2 = 0.6;
 const SALARY_DAY = 23;
@@ -388,7 +397,8 @@ const run = async () => {
     if (daysDiff > 7) return undefined;
     const closes = prices.map((p) => p.close);
     const slice = closes.slice(idx - REG_SHORT + 1, idx + 1);
-    const reg = linearRegression(slice.length >= 60 ? slice : []);
+    const minDataPoints = Math.floor(REG_SHORT * 0.67);
+    const reg = linearRegression(slice.length >= minDataPoints ? slice : []);
     if (reg.slope <= 0) return undefined;
     if (reg.r2 < MIN_R2) return undefined;
     return { slope: reg.slope * 252, r2: reg.r2 };
@@ -691,7 +701,7 @@ const run = async () => {
 
       // Holdings
       log("");
-      log("  HOLDINGS (unified pool — ranked by 90d slope):");
+      log(`  HOLDINGS (unified pool — ranked by ${REG_SHORT}d slope):`);
       for (let i = 0; i < topCandidates.length; i++) {
         const c = topCandidates[i];
         const price = getPriceOnDate(c.instrumentId, day) || 0;

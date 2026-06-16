@@ -14,7 +14,16 @@ import * as path from "node:path";
 import { prisma } from "../lib/prisma";
 import { linearRegression } from "../backtest/utils";
 
-const OUTPUT_FILE = path.join(__dirname, "../../vindros_signals.txt");
+// Parse --reg=N from CLI args (default 90)
+const regArg = process.argv.find((a) => a.startsWith("--reg="));
+const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 90;
+
+const OUTPUT_FILE = path.join(
+  __dirname,
+  REG_WINDOW === 90
+    ? "../../vindros_signals.txt"
+    : `../../vindros_signals_${REG_WINDOW}d.txt`,
+);
 const PORTFOLIO_FILE = path.join(__dirname, "../../vindros_portfolio.json");
 const INITIAL_CAPITAL = 20_000;
 const MONTHLY_CONTRIBUTION = 5_000;
@@ -23,7 +32,7 @@ const EXECUTE_MODE = process.argv.includes("--execute");
 // Configuration (same as vindros_final)
 const TOTAL_POSITIONS = 15;
 const BENCHMARK_ID = 638;
-const REG_SHORT = 90;
+const REG_SHORT = REG_WINDOW;
 const MIN_PRICE = 10;
 const MAX_ADV_FRACTION = 0.1; // Position must be <10% of 20-day avg daily turnover
 const ADV_LOOKBACK = 20;

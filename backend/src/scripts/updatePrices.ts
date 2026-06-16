@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma";
 import { chunkArray } from "../lib/chunks";
 
 const DRIFT_THRESHOLD = 0.005; // 0.5% — triggers full re-fetch
+const NORDIC_COUNTRY_IDS = [1, 2, 3, 4]; // Sverige, Norge, Finland, Danmark
 
 const getWeekdays = (start: Date, end: Date): string[] => {
   const dates: string[] = [];
@@ -160,6 +161,114 @@ const fetchLatest = async () => {
 };
 
 /**
+ * Confirm detected drift against Börsdata's StockSplits endpoint (Nordic only).
+ * Stores confirmed splits in the StockSplit table for record-keeping.
+ */
+const confirmNordicSplits = async (driftedIds: number[]) => {
+  // Find which drifted instruments are Nordic
+  const nordicInstruments = await prisma.instrument.findMany({
+    where: {
+      id: { in: driftedIds },
+      countryId: { in: NORDIC_COUNTRY_IDS },
+    },
+    select: { id: true, name: true },
+  });
+
+  if (nordicInstruments.length === 0) {
+    console.log(
+      `\n  No Nordic instruments among drifted — skipping split confirmation`,
+    );
+    return;
+  }
+
+  console.log(
+    `\n  Checking StockSplits API for ${nordicInstruments.length} Nordic instrument(s)...`,
+  );
+
+  try {
+    const { data } = await api.get("/instruments/StockSplits");
+    const splits: {
+      instrumentId: number;
+      splitType: string;
+      ratio: string;
+      splitDate: string;
+    }[] = data.stockSplitList ?? [];
+
+    const nordicIds = new Set(nordicInstruments.map((i) => i.id));
+
+    for (const split of splits) {
+      if (!nordicIds.has(split.instrumentId)) continue;
+
+      const inst = nordicInstruments.find((i) => i.id === split.instrumentId);
+      const ratioFactor = parseRatioFactor(split.splitType, split.ratio);
+
+      console.log(
+        `    ✓ Split confirmed: ${inst?.name} (${split.instrumentId}) — ` +
+          `${split.splitType} ${split.ratio} on ${split.splitDate.slice(0, 10)}` +
+          ` (factor: ${ratioFactor})`,
+      );
+
+      // Upsert into StockSplit table
+      await prisma.stockSplit.upsert({
+        where: {
+          instrumentId_splitDate: {
+            instrumentId: split.instrumentId,
+            splitDate: new Date(split.splitDate),
+          },
+        },
+        update: {
+          splitType: split.splitType,
+          ratio: split.ratio,
+          ratioFactor,
+        },
+        create: {
+          instrumentId: split.instrumentId,
+          splitType: split.splitType,
+          ratio: split.ratio,
+          splitDate: new Date(split.splitDate),
+          ratioFactor,
+          applied: true, // Börsdata already adjusted the prices
+        },
+      });
+
+      nordicIds.delete(split.instrumentId);
+    }
+
+    // Log any Nordic drift that wasn't explained by a split
+    for (const id of nordicIds) {
+      const inst = nordicInstruments.find((i) => i.id === id);
+      console.log(
+        `    ? ${inst?.name} (${id}) — drift detected but no split found in API (data correction?)`,
+      );
+    }
+  } catch (error: any) {
+    console.error(`    ✗ StockSplits API call failed: ${error.message}`);
+  }
+};
+
+/**
+ * Parse ratio string (e.g. "3:1", "1:10") into a price multiplier factor.
+ * S (split) 3:1 → each old share becomes 3, price divides by 3 → factor 0.333
+ * RS (reverse split) 1:10 → 10 old shares become 1, price multiplies by 10 → factor 10
+ */
+const parseRatioFactor = (splitType: string, ratio: string): number => {
+  const parts = ratio.split(":");
+  if (parts.length !== 2) return 1;
+
+  const left = parseFloat(parts[0]);
+  const right = parseFloat(parts[1]);
+  if (!left || !right) return 1;
+
+  // For splits (S, F, D): you get more shares, price goes down
+  // Factor = how much old prices should be divided by
+  // For reverse splits (RS): you get fewer shares, price goes up
+  if (splitType === "RS") {
+    return right / left; // e.g. "1:10" → 10
+  }
+  return left / right; // e.g. "3:1" → 0.333
+};
+
+/**
  * Phase 3: Detect price drift (splits/adjustments) and re-fetch affected instruments.
  *
  * For each instrument, compare our last stored price with what Börsdata now returns
@@ -238,6 +347,9 @@ const detectAndFixDrift = async () => {
     console.log("  ✓ No drift detected — all prices match Börsdata");
     return;
   }
+
+  // Confirm splits for Nordic instruments via the StockSplits endpoint
+  await confirmNordicSplits(driftedIds);
 
   console.log(`\n  Re-fetching ${driftedIds.length} instruments with drift...`);
 

@@ -122,10 +122,12 @@ async function createMissingInstruments(
 async function importPrices(mapping: Map<number, number>): Promise<void> {
   console.log("\n--- Phase 2: Importing prices from StockCorse.csv ---");
 
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+
   const pool = new Pool({
-    connectionString:
-      process.env.DATABASE_URL ||
-      "postgresql://postgres:postgres@localhost:5432/vindros_quant",
+    connectionString: process.env.DATABASE_URL,
   });
 
   const startLine = loadImportProgress();
