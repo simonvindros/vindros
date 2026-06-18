@@ -342,7 +342,7 @@ const run = async () => {
   const qualifiedSmall = await getQualifiedSmallCaps(smallIds);
 
   // Rank all eligible stocks together
-  const largeMidRanked = rankPool([...largeMidIdSet], estPositionSize, false);
+  const largeMidRanked = rankPool([...largeMidIdSet], estPositionSize, estPositionSize > 0);
   const smallRanked = rankPool(
     [...qualifiedSmall],
     estPositionSize,

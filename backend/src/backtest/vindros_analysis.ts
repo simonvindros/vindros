@@ -18,11 +18,17 @@ import { linearRegression } from "./utils";
 const regArg = process.argv.find((a) => a.startsWith("--reg="));
 const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 90;
 
+// Parse --pos=N from CLI args (default 15)
+const posArg = process.argv.find((a) => a.startsWith("--pos="));
+const POS_COUNT = posArg ? parseInt(posArg.split("=")[1]) : 15;
+
 const OUTPUT_FILE = path.join(
   __dirname,
-  REG_WINDOW === 90
-    ? "vindros_analysis_output.txt"
-    : `vindros_analysis_output_${REG_WINDOW}d.txt`,
+  POS_COUNT !== 15
+    ? `vindros_analysis_output_${REG_WINDOW}d_${POS_COUNT}pos.txt`
+    : REG_WINDOW === 90
+      ? "vindros_analysis_output.txt"
+      : `vindros_analysis_output_${REG_WINDOW}d.txt`,
 );
 const lines: string[] = [];
 const log = (msg = "") => {
@@ -33,7 +39,7 @@ const log = (msg = "") => {
 // ─── Configuration (same as vindros_final) ───────────────────────────────────
 const START_DATE = new Date("2006-07-01");
 const END_DATE = new Date("2026-05-27");
-const TOTAL_POSITIONS = 15;
+const TOTAL_POSITIONS = POS_COUNT;
 const MAX_ADV_FRACTION = 0.1;
 const INITIAL_CAPITAL = 20_000;
 const MONTHLY_CONTRIBUTION = 5_000;
@@ -49,7 +55,7 @@ const SMALL_MARKETS = [3, 4, 5];
 const MIN_REVENUE_GROWTH = 10;
 const MIN_REVENUE_MSEK = 50;
 const MIN_OPERATING_MARGIN = 5;
-const MIN_YEARS_DATA = 3;
+const MIN_YEARS_DATA = 2;
 const KPI_REVENUE_GROWTH = 94;
 const KPI_OPERATING_MARGIN = 29;
 const KPI_REVENUE = 53;
@@ -398,7 +404,7 @@ const run = async () => {
     const closes = prices.map((p) => p.close);
     const slice = closes.slice(idx - REG_SHORT + 1, idx + 1);
     const minDataPoints = Math.floor(REG_SHORT * 0.67);
-    const reg = linearRegression(slice.length >= minDataPoints ? slice : []);
+    const reg = linearRegression(slice, minDataPoints);
     if (reg.slope <= 0) return undefined;
     if (reg.r2 < MIN_R2) return undefined;
     return { slope: reg.slope * 252, r2: reg.r2 };
@@ -416,12 +422,9 @@ const run = async () => {
     return totalTurnover / 20;
   };
 
-  let liquidityFiltered = 0;
-
   const getUnifiedTop = (
     dateStr: string,
     count: number,
-    estimatedPositionSize: number,
     qualifiedSmall: Set<number>,
   ) => {
     type Candidate = {
@@ -448,11 +451,6 @@ const run = async () => {
     for (const instId of qualifiedSmall) {
       const price = getPriceOnDate(instId, dateStr);
       if (!price || price < MIN_PRICE) continue;
-      const adv = getADV(instId, dateStr);
-      if (adv > 0 && estimatedPositionSize / adv > MAX_ADV_FRACTION) {
-        liquidityFiltered++;
-        continue;
-      }
       const reg = getRegressionScore(instId, dateStr);
       if (!reg) continue;
       candidates.push({
@@ -464,7 +462,18 @@ const run = async () => {
     }
 
     candidates.sort((a, b) => b.slope - a.slope);
-    return candidates.slice(0, count);
+
+    // Deduplicate by company name (strip A/B suffix, keep highest-slope entry)
+    const seenCompanies = new Set<string>();
+    const deduped: Candidate[] = [];
+    for (const c of candidates) {
+      const rawName = nameMap.get(c.instrumentId) || String(c.instrumentId);
+      const companyName = rawName.replace(/ [AB]$/, "");
+      if (seenCompanies.has(companyName)) continue;
+      seenCompanies.add(companyName);
+      deduped.push(c);
+    }
+    return deduped.slice(0, count);
   };
 
   // ─── Backtest Loop ─────────────────────────────────────────────────────
@@ -516,6 +525,7 @@ const run = async () => {
         avail.year,
         avail.period,
       );
+
       lastQualifyYear = qualifyKey;
     }
 
@@ -529,18 +539,78 @@ const run = async () => {
         const p = getPriceOnDate(pos.instrumentId, day) || pos.entryPrice;
         currentPV += pos.shares * p;
       }
-      const estPositionSize = currentPV / TOTAL_POSITIONS;
 
       const topCandidates = getUnifiedTop(
         day,
         TOTAL_POSITIONS,
-        estPositionSize,
         qualifiedSmallCaps,
       );
 
-      const allCandidateIds = new Set(topCandidates.map((c) => c.instrumentId));
+      // ─── ADV-capped allocation with top-down redistribution ─────────
+      // 1. Take top TOTAL_POSITIONS candidates
+      // 2. Allocate PV/TOTAL_POSITIONS to each, capped at 10% ADV
+      // 3. Leftover? Re-distribute top-down to slots with ADV room
+      // 4. Repeat until fully invested or no more room
+      let pv = cash;
+      for (const pos of positions) {
+        pv +=
+          (getPriceOnDate(pos.instrumentId, day) || pos.entryPrice) *
+          pos.shares;
+      }
 
-      // Determine sells
+      // Only take the top TOTAL_POSITIONS candidates
+      const selectedCandidates = topCandidates.slice(0, TOTAL_POSITIONS);
+
+      type SlotAllocation = {
+        instrumentId: number;
+        pool: "large" | "small";
+        slope: number;
+        allocation: number;
+        maxByLiquidity: number;
+      };
+
+      // Build slots with ADV caps
+      const slotAllocations: SlotAllocation[] = selectedCandidates.map((c) => {
+        const adv = getADV(c.instrumentId, day);
+        return {
+          instrumentId: c.instrumentId,
+          pool: c.pool,
+          slope: c.slope,
+          allocation: 0,
+          maxByLiquidity: adv > 0 ? adv * MAX_ADV_FRACTION : Infinity,
+        };
+      });
+
+      // Iteratively distribute from top down until fully invested
+      let remaining = pv;
+      let passes = 0;
+      while (remaining > 100 && passes < 20) {
+        passes++;
+        const slotsWithRoom = slotAllocations.filter(
+          (a) => a.allocation < a.maxByLiquidity * 0.99,
+        );
+        if (slotsWithRoom.length === 0) break;
+
+        const perSlot = remaining / slotsWithRoom.length;
+        let distributed = 0;
+
+        for (const a of slotsWithRoom) {
+          const room = a.maxByLiquidity - a.allocation;
+          const topUp = Math.min(perSlot, room);
+          if (topUp > 0) {
+            a.allocation += topUp;
+            distributed += topUp;
+          }
+        }
+
+        remaining -= distributed;
+        if (distributed < 100) break;
+      }
+
+      // Build the set of allocated instrument IDs
+      const allocatedIds = new Set(slotAllocations.map((a) => a.instrumentId));
+
+      // Determine sells — positions not in the new allocation
       const sells: {
         name: string;
         pool: string;
@@ -549,13 +619,13 @@ const run = async () => {
       }[] = [];
       const keepPositions: Position[] = [];
       for (const pos of positions) {
-        if (allCandidateIds.has(pos.instrumentId)) {
+        if (allocatedIds.has(pos.instrumentId)) {
           keepPositions.push(pos);
         } else {
           const price = getPriceOnDate(pos.instrumentId, day);
           if (price) {
             const ret = (price / pos.entryPrice - 1) * 100;
-            const reason = "dropped from top 15 by slope";
+            const reason = `dropped from top ${TOTAL_POSITIONS} by slope`;
             sells.push({
               name: pos.name,
               pool: pos.pool,
@@ -576,74 +646,57 @@ const run = async () => {
         slope: number;
         reason: string;
       }[] = [];
-      for (let i = 0; i < topCandidates.length; i++) {
-        const c = topCandidates[i];
-        if (!heldIds.has(c.instrumentId)) {
-          const tag = c.pool === "small" ? " [S]" : "";
+      for (let i = 0; i < slotAllocations.length; i++) {
+        const a = slotAllocations[i];
+        if (!heldIds.has(a.instrumentId)) {
+          const tag = a.pool === "small" ? " [S]" : "";
           buys.push({
-            name: nameMap.get(c.instrumentId) || "",
-            pool: c.pool,
-            slope: c.slope,
-            reason: `#${i + 1} by slope (${c.slope.toFixed(2)})${tag}`,
+            name: nameMap.get(a.instrumentId) || "",
+            pool: a.pool,
+            slope: a.slope,
+            reason: `#${i + 1} by slope (${a.slope.toFixed(2)})${tag}`,
           });
         }
       }
 
-      // Rebalance
-      let pv = cash;
-      for (const pos of positions) {
-        pv +=
-          (getPriceOnDate(pos.instrumentId, day) || pos.entryPrice) *
-          pos.shares;
-      }
-      const targetPerStock = pv / Math.max(topCandidates.length, 1);
-
-      // Trim overweight (free cash first)
-      for (const pos of positions) {
-        const price = getPriceOnDate(pos.instrumentId, day);
+      // Execute allocation: resize existing positions and buy new ones
+      for (const a of slotAllocations) {
+        const price = getPriceOnDate(a.instrumentId, day);
         if (!price) continue;
-        const currentValue = pos.shares * price;
-        if (currentValue > targetPerStock * 1.01) {
-          const sellShares = Math.floor(
-            (currentValue - targetPerStock) / price,
+        const targetShares = Math.floor(a.allocation / price);
+        if (targetShares === 0) continue;
+
+        const existing = positions.find(
+          (p) => p.instrumentId === a.instrumentId,
+        );
+        if (existing) {
+          // Resize existing position
+          const diff = targetShares - existing.shares;
+          if (diff > 0 && cash >= diff * price) {
+            existing.shares += diff;
+            cash -= diff * price;
+          } else if (diff < 0) {
+            existing.shares += diff; // diff is negative
+            cash -= diff * price; // adds cash
+          }
+        } else {
+          // New position
+          const buyShares = Math.min(
+            targetShares,
+            Math.floor(cash / price),
           );
-          if (sellShares > 0) {
-            cash += sellShares * price;
-            pos.shares -= sellShares;
-          }
-        }
-      }
-
-      // Top up underweight
-      for (const pos of positions) {
-        const price = getPriceOnDate(pos.instrumentId, day);
-        if (!price) continue;
-        const currentValue = pos.shares * price;
-        if (currentValue < targetPerStock * 0.99) {
-          const buyShares = Math.floor((targetPerStock - currentValue) / price);
-          if (buyShares > 0 && cash >= buyShares * price) {
+          if (buyShares > 0) {
+            positions.push({
+              instrumentId: a.instrumentId,
+              name: nameMap.get(a.instrumentId) || "",
+              entryDate: day,
+              entryPrice: price,
+              shares: buyShares,
+              pool: a.pool,
+            });
             cash -= buyShares * price;
-            pos.shares += buyShares;
           }
         }
-      }
-
-      // Buy new entries
-      for (const c of topCandidates) {
-        if (heldIds.has(c.instrumentId)) continue;
-        const price = getPriceOnDate(c.instrumentId, day);
-        if (!price) continue;
-        const shares = Math.floor(Math.min(targetPerStock, cash) / price);
-        if (shares === 0) continue;
-        positions.push({
-          instrumentId: c.instrumentId,
-          name: nameMap.get(c.instrumentId) || "",
-          entryDate: day,
-          entryPrice: price,
-          shares,
-          pool: c.pool,
-        });
-        cash -= shares * price;
       }
 
       // ─── LOG MONTHLY SNAPSHOT ────────────────────────────────────────
@@ -702,8 +755,8 @@ const run = async () => {
       // Holdings
       log("");
       log(`  HOLDINGS (unified pool — ranked by ${REG_SHORT}d slope):`);
-      for (let i = 0; i < topCandidates.length; i++) {
-        const c = topCandidates[i];
+      for (let i = 0; i < slotAllocations.length; i++) {
+        const c = slotAllocations[i];
         const price = getPriceOnDate(c.instrumentId, day) || 0;
         const pos = positions.find((p) => p.instrumentId === c.instrumentId);
         const value = pos ? pos.shares * price : 0;

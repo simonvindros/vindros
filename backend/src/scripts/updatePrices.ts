@@ -5,8 +5,7 @@ import { api } from "../lib/api";
 import { prisma } from "../lib/prisma";
 import { chunkArray } from "../lib/chunks";
 
-const DRIFT_THRESHOLD = 0.005; // 0.5% — triggers full re-fetch
-const NORDIC_COUNTRY_IDS = [1, 2, 3, 4]; // Sverige, Norge, Finland, Danmark
+const DRIFT_THRESHOLD = 0.005; // 0.5% — price mismatch threshold for split detection
 
 const getWeekdays = (start: Date, end: Date): string[] => {
   const dates: string[] = [];
@@ -161,92 +160,6 @@ const fetchLatest = async () => {
 };
 
 /**
- * Confirm detected drift against Börsdata's StockSplits endpoint (Nordic only).
- * Stores confirmed splits in the StockSplit table for record-keeping.
- */
-const confirmNordicSplits = async (driftedIds: number[]) => {
-  // Find which drifted instruments are Nordic
-  const nordicInstruments = await prisma.instrument.findMany({
-    where: {
-      id: { in: driftedIds },
-      countryId: { in: NORDIC_COUNTRY_IDS },
-    },
-    select: { id: true, name: true },
-  });
-
-  if (nordicInstruments.length === 0) {
-    console.log(
-      `\n  No Nordic instruments among drifted — skipping split confirmation`,
-    );
-    return;
-  }
-
-  console.log(
-    `\n  Checking StockSplits API for ${nordicInstruments.length} Nordic instrument(s)...`,
-  );
-
-  try {
-    const { data } = await api.get("/instruments/StockSplits");
-    const splits: {
-      instrumentId: number;
-      splitType: string;
-      ratio: string;
-      splitDate: string;
-    }[] = data.stockSplitList ?? [];
-
-    const nordicIds = new Set(nordicInstruments.map((i) => i.id));
-
-    for (const split of splits) {
-      if (!nordicIds.has(split.instrumentId)) continue;
-
-      const inst = nordicInstruments.find((i) => i.id === split.instrumentId);
-      const ratioFactor = parseRatioFactor(split.splitType, split.ratio);
-
-      console.log(
-        `    ✓ Split confirmed: ${inst?.name} (${split.instrumentId}) — ` +
-          `${split.splitType} ${split.ratio} on ${split.splitDate.slice(0, 10)}` +
-          ` (factor: ${ratioFactor})`,
-      );
-
-      // Upsert into StockSplit table
-      await prisma.stockSplit.upsert({
-        where: {
-          instrumentId_splitDate: {
-            instrumentId: split.instrumentId,
-            splitDate: new Date(split.splitDate),
-          },
-        },
-        update: {
-          splitType: split.splitType,
-          ratio: split.ratio,
-          ratioFactor,
-        },
-        create: {
-          instrumentId: split.instrumentId,
-          splitType: split.splitType,
-          ratio: split.ratio,
-          splitDate: new Date(split.splitDate),
-          ratioFactor,
-          applied: true, // Börsdata already adjusted the prices
-        },
-      });
-
-      nordicIds.delete(split.instrumentId);
-    }
-
-    // Log any Nordic drift that wasn't explained by a split
-    for (const id of nordicIds) {
-      const inst = nordicInstruments.find((i) => i.id === id);
-      console.log(
-        `    ? ${inst?.name} (${id}) — drift detected but no split found in API (data correction?)`,
-      );
-    }
-  } catch (error: any) {
-    console.error(`    ✗ StockSplits API call failed: ${error.message}`);
-  }
-};
-
-/**
  * Parse ratio string (e.g. "3:1", "1:10") into a price multiplier factor.
  * S (split) 3:1 → each old share becomes 3, price divides by 3 → factor 0.333
  * RS (reverse split) 1:10 → 10 old shares become 1, price multiplies by 10 → factor 10
@@ -269,97 +182,190 @@ const parseRatioFactor = (splitType: string, ratio: string): number => {
 };
 
 /**
- * Phase 3: Detect price drift (splits/adjustments) and re-fetch affected instruments.
+ * Phase 0: Proactively detect and fix split-adjusted prices.
  *
- * For each instrument, compare our last stored price with what Börsdata now returns
- * for that same date. If they differ by more than DRIFT_THRESHOLD, Börsdata has
- * retroactively adjusted (e.g. stock split) — so we delete our stale data and
- * re-fetch all history for that instrument.
+ * 1. Fetch all splits from Börsdata StockSplits API
+ * 2. Upsert into StockSplit table (new ones get applied: false)
+ * 3. For each unapplied split: compare our stored price at split date vs Börsdata's
+ * 4. If they differ → our data is stale → delete + re-fetch full history
+ * 5. Mark applied: true
  */
-const detectAndFixDrift = async () => {
-  console.log("\n  Checking for price drift (split adjustments)...");
+const applySplits = async () => {
+  console.log("  Checking for unapplied stock splits...");
 
-  // Get the last stored price per instrument
-  const lastPrices = await prisma.$queryRaw<
-    { instrumentId: number; date: Date; close: number }[]
-  >`
-    SELECT DISTINCT ON ("instrumentId")
-      "instrumentId", date, close::float as close
-    FROM "StockPrice"
-    ORDER BY "instrumentId", date DESC
-  `;
+  // Step 1: Fetch all splits from Börsdata
+  let apiSplits: {
+    instrumentId: number;
+    splitType: string;
+    ratio: string;
+    splitDate: string;
+  }[] = [];
 
-  // Group by the overlap date so we can batch API calls efficiently
-  const byDate = new Map<string, { instrumentId: number; close: number }[]>();
-  for (const row of lastPrices) {
-    const dateStr = row.date.toISOString().slice(0, 10);
-    if (!byDate.has(dateStr)) byDate.set(dateStr, []);
-    byDate
-      .get(dateStr)!
-      .push({ instrumentId: row.instrumentId, close: row.close });
-  }
-
-  const driftedIds: number[] = [];
-
-  // For each date group, fetch from Börsdata and compare
-  // Most instruments will share the same latest date, so this is efficient
-  for (const [dateStr, instruments] of byDate) {
-    const chunks = chunkArray(
-      instruments.map((i) => i.instrumentId),
-      10,
-    );
-
-    for (const chunk of chunks) {
-      try {
-        const { data } = await api.get("/instruments/stockprices", {
-          params: { instList: chunk.join(","), from: dateStr, to: dateStr },
-        });
-
-        for (const instData of data.stockPricesArrayList) {
-          const apiPrice = instData.stockPricesList.find(
-            (p: any) => p.d.slice(0, 10) === dateStr,
-          );
-          if (!apiPrice) continue;
-
-          const stored = instruments.find(
-            (i) => i.instrumentId === instData.instrument,
-          );
-          if (!stored) continue;
-
-          const drift = Math.abs(apiPrice.c - stored.close) / stored.close;
-          if (drift > DRIFT_THRESHOLD) {
-            console.log(
-              `    ⚠ Drift detected: instrument ${instData.instrument} — ` +
-                `stored ${stored.close.toFixed(2)}, API ${apiPrice.c} (${(drift * 100).toFixed(1)}%)`,
-            );
-            driftedIds.push(instData.instrument);
-          }
-        }
-      } catch (error: any) {
-        console.error(`    ✗ Drift check failed for chunk: ${error.message}`);
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-
-  if (driftedIds.length === 0) {
-    console.log("  ✓ No drift detected — all prices match Börsdata");
+  try {
+    const { data } = await api.get("/instruments/StockSplits");
+    apiSplits = data.stockSplitList ?? [];
+    console.log(`  Fetched ${apiSplits.length} splits from Börsdata API`);
+  } catch (error: any) {
+    console.error(`  ✗ Failed to fetch splits: ${error.message}`);
     return;
   }
 
-  // Confirm splits for Nordic instruments via the StockSplits endpoint
-  await confirmNordicSplits(driftedIds);
+  // Step 2: Upsert — new splits get applied: false
+  let newSplits = 0;
+  for (const split of apiSplits) {
+    if (!knownInstrumentIds.has(split.instrumentId)) continue;
 
-  console.log(`\n  Re-fetching ${driftedIds.length} instruments with drift...`);
+    const ratioFactor = parseRatioFactor(split.splitType, split.ratio);
+    const splitDate = new Date(split.splitDate);
 
-  // Re-fetch full history for drifted instruments
-  const driftChunks = chunkArray(driftedIds, 10);
+    const existing = await prisma.stockSplit.findUnique({
+      where: {
+        instrumentId_splitDate: {
+          instrumentId: split.instrumentId,
+          splitDate,
+        },
+      },
+    });
 
-  for (let i = 0; i < driftChunks.length; i++) {
-    const chunk = driftChunks[i];
+    if (!existing) {
+      await prisma.stockSplit.create({
+        data: {
+          instrumentId: split.instrumentId,
+          splitType: split.splitType,
+          ratio: split.ratio,
+          splitDate,
+          ratioFactor,
+          applied: false,
+        },
+      });
+      newSplits++;
+    }
+  }
+
+  if (newSplits > 0) {
+    console.log(`  ${newSplits} new split(s) recorded`);
+  }
+
+  // Step 3: Find all unapplied splits
+  const unapplied = await prisma.stockSplit.findMany({
+    where: { applied: false },
+  });
+
+  if (unapplied.length === 0) {
+    console.log("  ✓ All splits already applied");
+    return;
+  }
+
+  console.log(
+    `  ${unapplied.length} unapplied split(s) — checking prices...`,
+  );
+
+  // Step 4: For each unapplied split, compare stored vs API price at split date
+  // Group by instrumentId to avoid re-fetching the same instrument multiple times
+  const instrumentsToRefetch = new Set<number>();
+  const splitsByInstrument = new Map<number, typeof unapplied>();
+
+  for (const split of unapplied) {
+    if (!splitsByInstrument.has(split.instrumentId)) {
+      splitsByInstrument.set(split.instrumentId, []);
+    }
+    splitsByInstrument.get(split.instrumentId)!.push(split);
+  }
+
+  for (const [instrumentId, splits] of splitsByInstrument) {
+    const earliestSplit = splits.sort(
+      (a, b) => a.splitDate.getTime() - b.splitDate.getTime(),
+    )[0];
+    const splitDateStr = earliestSplit.splitDate.toISOString().slice(0, 10);
+
+    // Check the OLDEST stored price — most likely to be unadjusted
+    const storedPrice = await prisma.stockPrice.findFirst({
+      where: { instrumentId },
+      orderBy: { date: "asc" },
+      select: { date: true, close: true },
+    });
+
+    if (!storedPrice) {
+      // No stored prices at all — mark as applied, nothing to fix
+      for (const s of splits) {
+        await prisma.stockSplit.update({
+          where: { id: s.id },
+          data: { applied: true },
+        });
+      }
+      continue;
+    }
+
+    const checkDateStr = storedPrice.date.toISOString().slice(0, 10);
+
+    try {
+      const { data } = await api.get("/instruments/stockprices", {
+        params: {
+          instList: String(instrumentId),
+          from: checkDateStr,
+          to: checkDateStr,
+        },
+      });
+
+      const instData = data.stockPricesArrayList?.[0];
+      const apiPrice = instData?.stockPricesList?.find(
+        (p: any) => p.d.slice(0, 10) === checkDateStr,
+      );
+
+      if (!apiPrice) {
+        // Can't verify (no API data for that date) — re-fetch to be safe
+        console.log(
+          `    ? instrument ${instrumentId} — no API data for ${checkDateStr}, will re-fetch`,
+        );
+        instrumentsToRefetch.add(instrumentId);
+        continue;
+      }
+
+      const storedClose = Number(storedPrice.close);
+      const apiClose = apiPrice.c;
+      const drift = Math.abs(apiClose - storedClose) / storedClose;
+
+      if (drift > DRIFT_THRESHOLD) {
+        console.log(
+          `    ⚠ Stale prices: instrument ${instrumentId} — ` +
+            `stored ${storedClose.toFixed(2)}, API ${apiClose} on ${checkDateStr} ` +
+            `(split: ${earliestSplit.splitType} ${earliestSplit.ratio} on ${splitDateStr})`,
+        );
+        instrumentsToRefetch.add(instrumentId);
+      } else {
+        // Prices already match — mark all splits for this instrument as applied
+        for (const s of splits) {
+          await prisma.stockSplit.update({
+            where: { id: s.id },
+            data: { applied: true },
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error(
+        `    ✗ Price check failed for instrument ${instrumentId}: ${error.message}`,
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  if (instrumentsToRefetch.size === 0) {
+    console.log("  ✓ All split-affected prices are up to date");
+    return;
+  }
+
+  // Step 5: Re-fetch full history for stale instruments
+  console.log(
+    `\n  Re-fetching ${instrumentsToRefetch.size} instrument(s) with stale split data...`,
+  );
+
+  const refetchChunks = chunkArray([...instrumentsToRefetch], 10);
+
+  for (let i = 0; i < refetchChunks.length; i++) {
+    const chunk = refetchChunks[i];
     console.log(
-      `    Batch ${i + 1}/${driftChunks.length}: instruments ${chunk.join(", ")}`,
+      `    Batch ${i + 1}/${refetchChunks.length}: instruments ${chunk.join(", ")}`,
     );
 
     try {
@@ -368,12 +374,10 @@ const detectAndFixDrift = async () => {
       });
 
       for (const instData of data.stockPricesArrayList) {
-        // Delete all existing prices for this instrument
         await prisma.stockPrice.deleteMany({
           where: { instrumentId: instData.instrument },
         });
 
-        // Insert fresh data from Börsdata
         const records = instData.stockPricesList.map((price: any) => ({
           instrumentId: instData.instrument,
           date: new Date(price.d),
@@ -388,6 +392,12 @@ const detectAndFixDrift = async () => {
         console.log(
           `      ✓ ${instData.instrument}: replaced with ${records.length} rows`,
         );
+
+        // Mark all splits for this instrument as applied
+        await prisma.stockSplit.updateMany({
+          where: { instrumentId: instData.instrument },
+          data: { applied: true },
+        });
       }
     } catch (error: any) {
       console.error(`    ✗ Re-fetch failed: ${error.message}`);
@@ -396,7 +406,9 @@ const detectAndFixDrift = async () => {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  console.log(`  ✓ Re-fetched ${driftedIds.length} instruments`);
+  console.log(
+    `  ✓ Re-fetched ${instrumentsToRefetch.size} instrument(s) with corrected split data`,
+  );
 };
 
 const main = async () => {
@@ -406,14 +418,16 @@ const main = async () => {
     // Load known instruments to filter out unknown IDs from API responses
     await loadKnownInstruments();
 
+    // Phase 0: proactively fix split-adjusted prices
+    await applySplits();
+
     // Phase 1: backfill any gap up to yesterday
     await backfillGap();
 
     // Phase 2: fetch today's latest
     await fetchLatest();
 
-    // Phase 3: detect drift from Börsdata adjustments (splits etc.)
-    await detectAndFixDrift();
+
 
     console.log("\n✓ Done!");
   } catch (error) {

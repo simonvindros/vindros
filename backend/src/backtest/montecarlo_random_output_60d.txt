@@ -1,55 +1,0 @@
-
-> backend@1.0.0 montecarlo:random:60
-> TS_NODE_COMPILER_OPTIONS='{"rootDir":"."}' ts-node src/backtest/montecarlo_random.ts --reg=60
-
-Loading data...
-Universe: 355 Large+Mid Cap Swedish stocks
-Loaded 1,170,442 price rows
-Pre-computing eligible stocks per month...
-
-Running 1000 simulations with RANDOM stock selection...
-
-  Simulation 0/1000  Simulation 100/1000  Simulation 200/1000  Simulation 300/1000  Simulation 400/1000  Simulation 500/1000  Simulation 600/1000  Simulation 700/1000  Simulation 800/1000  Simulation 900/1000  Done!                          
-
-══════════════════════════════════════════════════════════════════════
-MONTE CARLO — RANDOM STOCK SELECTION (Swedish Large+Mid Cap)
-══════════════════════════════════════════════════════════════════════
-  Universe: 355 stocks | Positions: 15 | Monthly rebalance
-  Simulations: 1000
-  Period: 2006-07-03 → 2026-05-27 (239 months)
-
-──────────────────────────────────────────────────────────────────────
-RETURN DISTRIBUTION (random 15 stocks each month):
-──────────────────────────────────────────────────────────────────────
-  Mean return:     +423.2%
-  Median return:   +366.8%
-  5th percentile:  +155.0%  (unlucky)
-  25th percentile: +260.2%
-  75th percentile: +519.5%
-  95th percentile: +921.0%  (lucky)
-
-──────────────────────────────────────────────────────────────────────
-COMPARISONS:
-──────────────────────────────────────────────────────────────────────
-  VINDROS (slope ranking):  +2035.6%
-  Random selection mean:    +423.2%
-  Benchmark (OMXSPI DCA):   +137.5%
-  Slope ranking edge:       +1612.4% over random
-  Random vs index:          +285.7% over benchmark
-
-──────────────────────────────────────────────────────────────────────
-MAX DRAWDOWN DISTRIBUTION:
-──────────────────────────────────────────────────────────────────────
-  Mean max DD:     40.2%
-  Median max DD:   39.9%
-  95th percentile: 45.8%  (worst 5%)
-
-──────────────────────────────────────────────────────────────────────
-INTERPRETATION:
-──────────────────────────────────────────────────────────────────────
-  ✓ Vindros (+2035.6%) EXCEEDS the 95th percentile of random selection.
-  → The slope ranking is GENUINELY adding value beyond universe selection.
-  → Ranking contributes ~+1612% over 20 years.
-
-  ★ Even RANDOM stock picks from Large+Mid Cap massively beat the index.
-  → Equal-weight monthly rebalancing in a quality universe is itself a strategy.

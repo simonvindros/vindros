@@ -1,45 +1,54 @@
-VINDROS SIGNALS (60d) — 2026-05-29
+VINDROS SIGNALS — 2026-06-18
 ════════════════════════════════════════════════════════════
 
 ════════════════════════════════════════════════════════════
 ACTIONS:
 ════════════════════════════════════════════════════════════
 
-  BUY (new entries — fresh portfolio):
-    ✓ Nokia                        ~145.5 SEK  slope: 3.23
-    ✓ Sinch                        ~37.3 SEK  slope: 2.76
-    ✓ Xvivo Perfusion              ~288.2 SEK  slope: 2.57
-    ✓ Modern Times Group A         ~134.0 SEK  slope: 2.47
-    ✓ Modern Times Group B         ~134.5 SEK  slope: 2.47
-    ✓ NCAB Group                   ~80.9 SEK  slope: 2.31
-    ✓ PowerCell                    ~31.5 SEK  slope: 2.22
-    ✓ Mycronic                     ~306.0 SEK  slope: 2.19
-    ✓ Enea                         ~87.1 SEK  slope: 2.15
-    ✓ Ependion                     ~143.0 SEK  slope: 2.08
-    ✓ Hexatronic                   ~43.4 SEK  slope: 2.04
-    ✓ Hacksaw                      ~83.9 SEK  slope: 2.00
-    ✓ Embracer                     ~68.9 SEK  slope: 1.99
-    ✓ Mildef Group                 ~187.9 SEK  slope: 1.97
-    ✓ Boozt                        ~126.8 SEK  slope: 1.93
+  SELL (no longer in target):
+    ✗ Bonesupport                  sell all 5 shares
+    ✗ Bure Equity                  sell all 4 shares
+    ✗ Hacksaw                      sell all 16 shares
+    ✗ Hexatronic                   sell all 30 shares
+    ✗ HMS Networks                 sell all 2 shares
+    ✗ Instalco                     sell all 34 shares
+    ✗ International Petroleum      sell all 5 shares
+    ✗ Mycronic                     sell all 4 shares
+    ✗ Scandi Standard              sell all 9 shares
+    ✗ Sdiptech                     sell all 5 shares
 
-  REBALANCE (target: 1 333 SEK/position, portfolio: 20 000 SEK):
+  BUY (new entries):
+    ✓ Acast                        ~39.7 SEK  slope: 1.97
+    ✓ Enea                         ~80.1 SEK  slope: 2.35
+    ✓ Ependion                     ~147.8 SEK  slope: 2.50
+    ✓ Mildef Group                 ~180.7 SEK  slope: 1.95
+    ✓ Modern Times Group A         ~131.0 SEK  slope: 2.20
+    ✓ Modern Times Group B         ~123.4 SEK  slope: 2.09
+    ✓ Proact IT                    ~134.4 SEK  slope: 1.87
+    ✓ Sensys Gatso                 ~48.4 SEK  slope: 1.77
+    ✓ Sinch                        ~34.5 SEK  slope: 2.84
+    ✓ Yubico                       ~58.0 SEK  slope: 2.73
+
+  REBALANCE (target: 1 688 SEK/position, portfolio: 25 327 SEK):
 
   Stock                          Current  Target   Action
   ──────────────────────────────────────────────────────────
-  Boozt                              0      10   buy 10
-  Embracer                           0      19   buy 19
-  Enea                               0      15   buy 15
-  Ependion                           0       9   buy 9
-  Hacksaw                            0      15   buy 15
-  Hexatronic                         0      30   buy 30
-  Mildef Group                       0       7   buy 7
-  Modern Times Group A               0       9   buy 9
-  Modern Times Group B               0       9   buy 9
-  Mycronic                           0       4   buy 4
-  NCAB Group                         0      16   buy 16
-  Nokia                              0       9   buy 9
-  PowerCell                          0      42   buy 42
-  Sinch                              0      35   buy 35
-  Xvivo Perfusion                    0       4   buy 4
+  Acast                              0      42   buy 42
+  Boozt                             10      12   buy 2
+  Enea                               0      21   buy 21
+  Ependion                           0      11   buy 11
+  Mildef Group                       0       9   buy 9
+  Modern Times Group A               0      12   buy 12
+  Modern Times Group B               0      13   buy 13
+  NCAB Group                        16      21   buy 5
+  Nokia                              9      12   buy 3
+  Proact IT                          0      12   buy 12
+  Sensys Gatso                       0      34   buy 34
+  Sinch                              0      48   buy 48
+  TagMaster                         32      41   buy 9
+  Vestum                           109     106   sell 3
+  Yubico                             0      29   buy 29
   ──────────────────────────────────────────────────────────
-  CASH AFTER REBALANCE: 928 SEK
+  CASH AFTER REBALANCE: 762 SEK
+
+  → Run with --execute to save: npm run vindros:signals -- --execute
