@@ -44,8 +44,10 @@ export const seedKpiValues = async () => {
       }
 
       try {
+        const maxCount = combination.reportType === "year" ? 20 : 40;
         const response = await api.get(
           `/instruments/${instrument.id}/kpis/${combination.kpiId}/${combination.reportType}/${combination.priceType}/history`,
+          { params: { maxCount } },
         );
 
         const values = response.data.values;

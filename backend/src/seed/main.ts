@@ -9,6 +9,7 @@ import { seedKpiMetadata } from "./seedKpiMetadata";
 import { seedStockPrices } from "./seedStockPrices";
 import { prisma } from "../lib/prisma";
 import { seedKpiValues } from "./seedKpiValues";
+import { seedQuarterlyReports } from "./seedQuarterlyReports";
 
 const main = async () => {
   try {
@@ -20,6 +21,7 @@ const main = async () => {
     await seedKpiMetadata();
     await seedStockPrices();
     await seedKpiValues();
+    await seedQuarterlyReports();
 
     console.log("✓ Seeding complete!");
   } catch (error) {

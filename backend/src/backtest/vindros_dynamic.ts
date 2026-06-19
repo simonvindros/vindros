@@ -86,14 +86,23 @@ async function loadKpiData(instrumentIds: number[]) {
       reportType: "quarter",
       priceType: "mean",
     },
-    select: { instrumentId: true, kpiId: true, year: true, period: true, value: true },
+    select: {
+      instrumentId: true,
+      kpiId: true,
+      year: true,
+      period: true,
+      value: true,
+    },
   });
   for (const kv of qKpiValues) {
     if (kv.value === null) continue;
-    if (!qKpiData.has(kv.instrumentId)) qKpiData.set(kv.instrumentId, new Map());
+    if (!qKpiData.has(kv.instrumentId))
+      qKpiData.set(kv.instrumentId, new Map());
     const instMap = qKpiData.get(kv.instrumentId)!;
     if (!instMap.has(kv.kpiId)) instMap.set(kv.kpiId, []);
-    instMap.get(kv.kpiId)!.push({ key: kv.year * 10 + (kv.period ?? 0), value: Number(kv.value) });
+    instMap
+      .get(kv.kpiId)!
+      .push({ key: kv.year * 10 + (kv.period ?? 0), value: Number(kv.value) });
   }
   for (const instMap of qKpiData.values()) {
     for (const arr of instMap.values()) arr.sort((a, b) => a.key - b.key);
@@ -109,8 +118,10 @@ function latestAvailableQuarter(dateStr: string) {
 }
 
 function getQualifiedSmallCaps(
-  instrumentIds: number[], asOfYear: number,
-  asOfQuarterYear: number, asOfPeriod: number,
+  instrumentIds: number[],
+  asOfYear: number,
+  asOfQuarterYear: number,
+  asOfPeriod: number,
 ): Set<number> {
   const annualQualified = new Set<number>();
   for (const instId of instrumentIds) {
@@ -118,43 +129,56 @@ function getQualifiedSmallCaps(
     if (!kpiMap) continue;
     const revGrowthMap = kpiMap.get(KPI_REVENUE_GROWTH);
     if (!revGrowthMap) continue;
-    const revGrowthYears = [...revGrowthMap.entries()].filter(([y]) => y <= asOfYear).sort((a, b) => a[0] - b[0]);
-    if (revGrowthYears.length < MIN_YEARS_DATA) continue;
+    const revGrowthYears = [...revGrowthMap.entries()]
+      .filter(([y]) => y <= asOfYear)
+      .sort((a, b) => a[0] - b[0]);
+    if (revGrowthYears.length < 1) continue;
     const recent = revGrowthYears.slice(-5);
     const avgRevGrowth = recent.reduce((s, [, v]) => s + v, 0) / recent.length;
     if (avgRevGrowth < MIN_REVENUE_GROWTH) continue;
     const last4 = revGrowthYears.slice(-4);
     if (last4.filter(([, v]) => v < 0).length > 1) continue;
-    if (recent.some(([, v]) => v > 200 || v < -30)) continue;
+    // Outlier check: reject <-30% always; for >200% spikes, allow if next year grew >20%
+    let hasUnvalidatedSpike = false;
+    for (let i = 0; i < recent.length; i++) {
+      const [yr, v] = recent[i];
+      if (v < -30) {
+        hasUnvalidatedSpike = true;
+        break;
+      }
+      if (v > 200) {
+        // Check if the year after the spike also grew >20% (sustained = legitimate)
+        const nextEntry = revGrowthYears.find(([y]) => y === yr + 1);
+        if (!nextEntry || nextEntry[1] <= 20) {
+          hasUnvalidatedSpike = true;
+          break;
+        }
+      }
+    }
+    if (hasUnvalidatedSpike) continue;
     const revenueMap = kpiMap.get(KPI_REVENUE);
     if (revenueMap) {
-      const latest = [...revenueMap.entries()].filter(([y]) => y <= asOfYear).sort((a, b) => a[0] - b[0]).pop();
+      const latest = [...revenueMap.entries()]
+        .filter(([y]) => y <= asOfYear)
+        .sort((a, b) => a[0] - b[0])
+        .pop();
       if (latest && latest[1] < MIN_REVENUE_MSEK) continue;
     }
-    const opMarginMap = kpiMap.get(KPI_OPERATING_MARGIN);
-    if (!opMarginMap) continue;
-    const opMargins = [...opMarginMap.entries()].filter(([y]) => y <= asOfYear).sort((a, b) => a[0] - b[0]);
-    if (opMargins.length < MIN_YEARS_DATA) continue;
-    const latestMargin = opMargins[opMargins.length - 1][1];
-    if (latestMargin < MIN_OPERATING_MARGIN) continue;
-    const olderMargin = opMargins[Math.max(0, opMargins.length - 4)][1];
-    if (latestMargin - olderMargin < 0) continue;
     annualQualified.add(instId);
   }
   const cutoff = asOfQuarterYear * 10 + asOfPeriod;
   const qualified = new Set<number>();
   for (const instId of annualQualified) {
     const instQ = qKpiData.get(instId);
-    if (!instQ) { qualified.add(instId); continue; }
+    if (!instQ) {
+      qualified.add(instId);
+      continue;
+    }
     const revQ = instQ.get(KPI_REVENUE_GROWTH);
     if (revQ && revQ.length > 0) {
       const available = revQ.filter((x) => x.key <= cutoff);
-      if (available.length > 0 && available[available.length - 1].value < -10) continue;
-    }
-    const margQ = instQ.get(KPI_OPERATING_MARGIN);
-    if (margQ && margQ.length > 0) {
-      const available = margQ.filter((x) => x.key <= cutoff);
-      if (available.length > 0 && available[available.length - 1].value < 0) continue;
+      if (available.length > 0 && available[available.length - 1].value < -10)
+        continue;
     }
     qualified.add(instId);
   }
@@ -191,7 +215,9 @@ const run = async () => {
 
   const allInstruments = [...largeMidInstruments, ...smallInstruments];
   const allIds = allInstruments.map((i) => i.id);
-  const nameMap = new Map<number, string>(allDbInstruments.map((i) => [i.id, i.name]));
+  const nameMap = new Map<number, string>(
+    allDbInstruments.map((i) => [i.id, i.name]),
+  );
   const smallIds = smallInstruments.map((i) => i.id);
   const largeMidIdSet = new Set(largeMidInstruments.map((i) => i.id));
 
@@ -206,7 +232,10 @@ const run = async () => {
 
   log("Loading prices...");
   const allPrices = await prisma.stockPrice.findMany({
-    where: { instrumentId: { in: allNeededIds }, date: { gte: warmupDate, lte: END_DATE } },
+    where: {
+      instrumentId: { in: allNeededIds },
+      date: { gte: warmupDate, lte: END_DATE },
+    },
     select: { instrumentId: true, date: true, close: true, volume: true },
     orderBy: [{ instrumentId: "asc" }, { date: "asc" }],
   });
@@ -216,7 +245,9 @@ const run = async () => {
     if (!pricesByInstrument.has(p.instrumentId))
       pricesByInstrument.set(p.instrumentId, []);
     pricesByInstrument.get(p.instrumentId)!.push({
-      date: p.date, close: Number(p.close), volume: Number(p.volume),
+      date: p.date,
+      close: Number(p.close),
+      volume: Number(p.volume),
     });
   }
 
@@ -230,7 +261,8 @@ const run = async () => {
     if (tradingDates[i].slice(0, 7) !== tradingDates[i + 1].slice(0, 7))
       monthEnds.push(tradingDates[i]);
   }
-  if (tradingDates.length > 0) monthEnds.push(tradingDates[tradingDates.length - 1]);
+  if (tradingDates.length > 0)
+    monthEnds.push(tradingDates[tradingDates.length - 1]);
   const monthEndSet = new Set(monthEnds);
 
   const salaryDates = new Set<string>();
@@ -250,14 +282,20 @@ const run = async () => {
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
-  const getPriceOnDate = (instId: number, dateStr: string): number | undefined => {
+  const getPriceOnDate = (
+    instId: number,
+    dateStr: string,
+  ): number | undefined => {
     const prices = pricesByInstrument.get(instId);
     if (!prices) return undefined;
-    let lo = 0, hi = prices.length - 1, best: number | undefined;
+    let lo = 0,
+      hi = prices.length - 1,
+      best: number | undefined;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       if (prices[mid].date.toISOString().slice(0, 10) <= dateStr) {
-        best = prices[mid].close; lo = mid + 1;
+        best = prices[mid].close;
+        lo = mid + 1;
       } else hi = mid - 1;
     }
     return best;
@@ -266,11 +304,14 @@ const run = async () => {
   const getPriceIndex = (instId: number, dateStr: string): number => {
     const prices = pricesByInstrument.get(instId);
     if (!prices) return -1;
-    let lo = 0, hi = prices.length - 1, best = -1;
+    let lo = 0,
+      hi = prices.length - 1,
+      best = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       if (prices[mid].date.toISOString().slice(0, 10) <= dateStr) {
-        best = mid; lo = mid + 1;
+        best = mid;
+        lo = mid + 1;
       } else hi = mid - 1;
     }
     return best;
@@ -282,7 +323,9 @@ const run = async () => {
     const idx = getPriceIndex(instId, dateStr);
     if (idx < REG_SHORT) return undefined;
     const lastPriceDate = prices[idx].date.toISOString().slice(0, 10);
-    const daysDiff = (new Date(dateStr).getTime() - new Date(lastPriceDate).getTime()) / 86400000;
+    const daysDiff =
+      (new Date(dateStr).getTime() - new Date(lastPriceDate).getTime()) /
+      86400000;
     if (daysDiff > 7) return undefined;
     const closes = prices.map((p) => p.close);
     const slice = closes.slice(idx - REG_SHORT + 1, idx + 1);
@@ -297,12 +340,16 @@ const run = async () => {
     const idx = getPriceIndex(instId, dateStr);
     if (idx < 20) return 0;
     let total = 0;
-    for (let i = idx - 19; i <= idx; i++) total += prices[i].close * prices[i].volume;
+    for (let i = idx - 19; i <= idx; i++)
+      total += prices[i].close * prices[i].volume;
     return total / 20;
   };
 
   // Get ADV considering A→B substitution: if A-share is illiquid, return B-share ADV
-  const getEffectiveADV = (instId: number, dateStr: string): { adv: number; tradeId: number } => {
+  const getEffectiveADV = (
+    instId: number,
+    dateStr: string,
+  ): { adv: number; tradeId: number } => {
     const adv = getADV(instId, dateStr);
     const bId = aToBMap.get(instId);
     if (bId) {
@@ -314,21 +361,36 @@ const run = async () => {
 
   // Get all candidates sorted by slope (NO ADV filter — that's handled dynamically)
   const getAllCandidates = (dateStr: string, qualifiedSmall: Set<number>) => {
-    type Candidate = { instrumentId: number; slope: number; r2: number; pool: "large" | "small" };
+    type Candidate = {
+      instrumentId: number;
+      slope: number;
+      r2: number;
+      pool: "large" | "small";
+    };
     const candidates: Candidate[] = [];
     for (const instId of largeMidIdSet) {
       const price = getPriceOnDate(instId, dateStr);
       if (!price || price < MIN_PRICE) continue;
       const reg = getRegressionScore(instId, dateStr);
       if (!reg) continue;
-      candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2, pool: "large" });
+      candidates.push({
+        instrumentId: instId,
+        slope: reg.slope,
+        r2: reg.r2,
+        pool: "large",
+      });
     }
     for (const instId of qualifiedSmall) {
       const price = getPriceOnDate(instId, dateStr);
       if (!price || price < MIN_PRICE) continue;
       const reg = getRegressionScore(instId, dateStr);
       if (!reg) continue;
-      candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2, pool: "small" });
+      candidates.push({
+        instrumentId: instId,
+        slope: reg.slope,
+        r2: reg.r2,
+        pool: "small",
+      });
     }
     candidates.sort((a, b) => b.slope - a.slope);
 
@@ -372,7 +434,11 @@ const run = async () => {
     const usedTradeIds = new Set<number>(); // prevent A+B double-counting
 
     // Pass 1: allocate up to targetPerSlot each, capping at ADV limit
-    while (remaining > 100 && candidateIdx < candidates.length && candidateIdx < MAX_POSITIONS) {
+    while (
+      remaining > 100 &&
+      candidateIdx < candidates.length &&
+      candidateIdx < MAX_POSITIONS
+    ) {
       const c = candidates[candidateIdx];
       candidateIdx++;
 
@@ -381,7 +447,8 @@ const run = async () => {
       // Skip if this company is already allocated (A↔B bidirectional check)
       if (usedTradeIds.has(tradeId)) continue;
       if (usedTradeIds.has(c.instrumentId)) continue;
-      const counterpartId = aToBMap.get(c.instrumentId) ?? bToAMap.get(c.instrumentId);
+      const counterpartId =
+        aToBMap.get(c.instrumentId) ?? bToAMap.get(c.instrumentId);
       if (counterpartId && usedTradeIds.has(counterpartId)) continue;
 
       const maxByLiquidity = adv > 0 ? adv * MAX_ADV_FRACTION : Infinity;
@@ -440,9 +507,10 @@ const run = async () => {
       if (distributed < 100) break; // no progress
     }
 
-    const reason = allocations.length > MIN_POSITIONS
-      ? `${MIN_POSITIONS}→${allocations.length} slots (liquidity caps)`
-      : null;
+    const reason =
+      allocations.length > MIN_POSITIONS
+        ? `${MIN_POSITIONS}→${allocations.length} slots (liquidity caps)`
+        : null;
 
     return { allocations, expansionReason: reason };
   };
@@ -451,7 +519,8 @@ const run = async () => {
   let cash = INITIAL_CAPITAL;
   let positions: Position[] = [];
   let totalContributed = INITIAL_CAPITAL;
-  let benchmarkShares = INITIAL_CAPITAL / (getPriceOnDate(BENCHMARK_ID, tradingDates[0]) || 1);
+  let benchmarkShares =
+    INITIAL_CAPITAL / (getPriceOnDate(BENCHMARK_ID, tradingDates[0]) || 1);
 
   let qualifiedSmallCaps = new Set<number>();
   let lastQualifyYear = 0;
@@ -459,7 +528,12 @@ const run = async () => {
   let totalTrades = 0;
 
   // Track yearly data
-  type YearSnapshot = { year: number; portfolioValue: number; bmValue: number; contributed: number };
+  type YearSnapshot = {
+    year: number;
+    portfolioValue: number;
+    bmValue: number;
+    contributed: number;
+  };
   const yearSnapshots: YearSnapshot[] = [];
   let lastSnapshotYear = 0;
   let prevYearEndPV = INITIAL_CAPITAL;
@@ -467,7 +541,12 @@ const run = async () => {
   let prevYearEndContrib = INITIAL_CAPITAL;
 
   // Track slot count changes
-  const slotHistory: { month: number; date: string; slots: number; reason: string | null }[] = [];
+  const slotHistory: {
+    month: number;
+    date: string;
+    slots: number;
+    reason: string | null;
+  }[] = [];
 
   // Track max drawdown
   let peakPV = INITIAL_CAPITAL;
@@ -487,7 +566,12 @@ const run = async () => {
     const qualifyKey = currentYear * 10 + currentQ;
     if (qualifyKey > lastQualifyYear) {
       const avail = latestAvailableQuarter(day);
-      qualifiedSmallCaps = getQualifiedSmallCaps(smallIds, currentYear - 1, avail.year, avail.period);
+      qualifiedSmallCaps = getQualifiedSmallCaps(
+        smallIds,
+        currentYear - 1,
+        avail.year,
+        avail.period,
+      );
       lastQualifyYear = qualifyKey;
     }
 
@@ -503,12 +587,23 @@ const run = async () => {
 
       // Get all candidates and allocate with liquidity caps
       const allCandidates = getAllCandidates(day, qualifiedSmallCaps);
-      const { allocations, expansionReason } = allocatePositions(allCandidates, currentPV, day);
+      const { allocations, expansionReason } = allocatePositions(
+        allCandidates,
+        currentPV,
+        day,
+      );
       const slotCount = allocations.length;
 
-      slotHistory.push({ month: monthCount, date: day, slots: slotCount, reason: expansionReason });
+      slotHistory.push({
+        month: monthCount,
+        date: day,
+        slots: slotCount,
+        reason: expansionReason,
+      });
 
-      const allSelectedSignalIds = new Set(allocations.map((a) => a.instrumentId));
+      const allSelectedSignalIds = new Set(
+        allocations.map((a) => a.instrumentId),
+      );
 
       // Determine sells
       const sells: { name: string; pool: string; returnPct: string }[] = [];
@@ -534,13 +629,22 @@ const run = async () => {
 
       // Determine buys
       const heldSignalIds = new Set(positions.map((p) => p.instrumentId));
-      const buys: { name: string; tradeName: string; pool: string; slope: number; rank: number; capped: boolean; allocation: number }[] = [];
+      const buys: {
+        name: string;
+        tradeName: string;
+        pool: string;
+        slope: number;
+        rank: number;
+        capped: boolean;
+        allocation: number;
+      }[] = [];
       for (let i = 0; i < allocations.length; i++) {
         const a = allocations[i];
         if (!heldSignalIds.has(a.instrumentId)) {
           buys.push({
             name: nameMap.get(a.instrumentId) || "",
-            tradeName: a.tradeId !== a.instrumentId ? (nameMap.get(a.tradeId) || "") : "",
+            tradeName:
+              a.tradeId !== a.instrumentId ? nameMap.get(a.tradeId) || "" : "",
             pool: a.pool,
             slope: a.slope,
             rank: i + 1,
@@ -551,7 +655,9 @@ const run = async () => {
       }
 
       // Rebalance existing positions to their target allocations
-      const allocationMap = new Map(allocations.map((a) => [a.instrumentId, a]));
+      const allocationMap = new Map(
+        allocations.map((a) => [a.instrumentId, a]),
+      );
       for (const pos of positions) {
         const alloc = allocationMap.get(pos.instrumentId);
         if (!alloc) continue;
@@ -561,10 +667,16 @@ const run = async () => {
         const target = alloc.allocation;
         if (currentValue > target * 1.01) {
           const sellShares = Math.floor((currentValue - target) / price);
-          if (sellShares > 0) { cash += sellShares * price; pos.shares -= sellShares; }
+          if (sellShares > 0) {
+            cash += sellShares * price;
+            pos.shares -= sellShares;
+          }
         } else if (currentValue < target * 0.99) {
           const buyShares = Math.floor((target - currentValue) / price);
-          if (buyShares > 0 && cash >= buyShares * price) { cash -= buyShares * price; pos.shares += buyShares; }
+          if (buyShares > 0 && cash >= buyShares * price) {
+            cash -= buyShares * price;
+            pos.shares += buyShares;
+          }
         }
       }
 
@@ -591,9 +703,11 @@ const run = async () => {
       // ─── LOG ─────────────────────────────────────────────────────────
       let portfolioValue = cash;
       for (const pos of positions) {
-        portfolioValue += (getPriceOnDate(pos.tradeId, day) || pos.entryPrice) * pos.shares;
+        portfolioValue +=
+          (getPriceOnDate(pos.tradeId, day) || pos.entryPrice) * pos.shares;
       }
-      const bmValue = benchmarkShares * (getPriceOnDate(BENCHMARK_ID, day) || 0);
+      const bmValue =
+        benchmarkShares * (getPriceOnDate(BENCHMARK_ID, day) || 0);
 
       // Drawdown tracking
       if (portfolioValue > peakPV) peakPV = portfolioValue;
@@ -602,7 +716,12 @@ const run = async () => {
 
       // Year tracking
       if (currentYear > lastSnapshotYear && lastSnapshotYear > 0) {
-        yearSnapshots.push({ year: lastSnapshotYear, portfolioValue: prevYearEndPV, bmValue: prevYearEndBM, contributed: prevYearEndContrib });
+        yearSnapshots.push({
+          year: lastSnapshotYear,
+          portfolioValue: prevYearEndPV,
+          bmValue: prevYearEndBM,
+          contributed: prevYearEndContrib,
+        });
       }
       lastSnapshotYear = currentYear;
       prevYearEndPV = portfolioValue;
@@ -615,20 +734,27 @@ const run = async () => {
 
       log("");
       log("━".repeat(80));
-      log(`MONTH ${monthCount} — ${day}   PV: ${Math.round(portfolioValue).toLocaleString("sv-SE")} SEK   BM: ${Math.round(bmValue).toLocaleString("sv-SE")} SEK   ${slotsLabel}`);
+      log(
+        `MONTH ${monthCount} — ${day}   PV: ${Math.round(portfolioValue).toLocaleString("sv-SE")} SEK   BM: ${Math.round(bmValue).toLocaleString("sv-SE")} SEK   ${slotsLabel}`,
+      );
       log("━".repeat(80));
 
       if (sells.length > 0 || buys.length > 0) {
         if (sells.length > 0) {
           log("  SOLD:");
-          for (const s of sells) log(`    ✗ ${s.name.padEnd(28)} [${s.pool}] ${s.returnPct.padStart(7)}`);
+          for (const s of sells)
+            log(
+              `    ✗ ${s.name.padEnd(28)} [${s.pool}] ${s.returnPct.padStart(7)}`,
+            );
         }
         if (buys.length > 0) {
           log("  BOUGHT:");
           for (const b of buys) {
             const sub = b.tradeName ? ` → trade ${b.tradeName}` : "";
             const cap = b.capped ? " [CAPPED]" : "";
-            log(`    ✓ ${b.name.padEnd(28)} [${b.pool}] #${b.rank} slope:${b.slope.toFixed(2)}${sub}${cap}`);
+            log(
+              `    ✓ ${b.name.padEnd(28)} [${b.pool}] #${b.rank} slope:${b.slope.toFixed(2)}${sub}${cap}`,
+            );
           }
         }
       } else {
@@ -646,30 +772,49 @@ const run = async () => {
         const weight = ((value / portfolioValue) * 100).toFixed(1);
         const adv = getADV(a.tradeId, day);
         const pctOfAdv = adv > 0 ? ((value / adv) * 100).toFixed(1) : "N/A";
-        const advStr = adv >= 1e6 ? `${(adv / 1e6).toFixed(1)}M` : `${(adv / 1e3).toFixed(0)}k`;
-        const tradeName = a.tradeId !== a.instrumentId ? `(→${nameMap.get(a.tradeId) || "?"})` : "";
+        const advStr =
+          adv >= 1e6
+            ? `${(adv / 1e6).toFixed(1)}M`
+            : `${(adv / 1e3).toFixed(0)}k`;
+        const tradeName =
+          a.tradeId !== a.instrumentId
+            ? nameMap.get(a.tradeId) || "?"
+            : nameMap.get(a.instrumentId) || "";
         const held = pos ? `since ${pos.entryDate}` : "new";
-        const ret = pos ? `${((price / pos.entryPrice - 1) * 100).toFixed(1)}%` : "";
+        const ret = pos
+          ? `${((price / pos.entryPrice - 1) * 100).toFixed(1)}%`
+          : "";
         const capLabel = a.capped ? " ◄CAP" : "";
-        const displayName = `${(nameMap.get(a.instrumentId) || "").padEnd(25)} ${tradeName}`.trimEnd();
-        log(`    ${String(i + 1).padStart(2)}. ${displayName.padEnd(40)} ${price.toFixed(1).padStart(8)} SEK  slope:${a.slope.toFixed(2).padStart(6)}  wt:${weight}%  ADV:${advStr} (${pctOfAdv}%)  ${held} ${ret}${capLabel}`);
+        const displayName = tradeName.padEnd(40);
+        log(
+          `    ${String(i + 1).padStart(2)}. ${displayName.padEnd(40)} ${price.toFixed(1).padStart(8)} SEK  slope:${a.slope.toFixed(2).padStart(6)}  wt:${weight}%  ADV:${advStr} (${pctOfAdv}%)  ${held} ${ret}${capLabel}`,
+        );
       }
 
       const cashPct = ((cash / portfolioValue) * 100).toFixed(1);
-      log(`  CASH: ${Math.round(cash).toLocaleString("sv-SE")} SEK (${cashPct}%)`);
+      log(
+        `  CASH: ${Math.round(cash).toLocaleString("sv-SE")} SEK (${cashPct}%)`,
+      );
     }
   }
 
   // ─── Summary ───────────────────────────────────────────────────────────
-  yearSnapshots.push({ year: lastSnapshotYear, portfolioValue: prevYearEndPV, bmValue: prevYearEndBM, contributed: prevYearEndContrib });
+  yearSnapshots.push({
+    year: lastSnapshotYear,
+    portfolioValue: prevYearEndPV,
+    bmValue: prevYearEndBM,
+    contributed: prevYearEndContrib,
+  });
 
   const lastDate = tradingDates[tradingDates.length - 1];
   let finalValue = cash;
   for (const pos of positions) {
-    finalValue += (getPriceOnDate(pos.tradeId, lastDate) || pos.entryPrice) * pos.shares;
+    finalValue +=
+      (getPriceOnDate(pos.tradeId, lastDate) || pos.entryPrice) * pos.shares;
   }
   const totalReturn = (finalValue / totalContributed - 1) * 100;
-  const benchFinal = benchmarkShares * (getPriceOnDate(BENCHMARK_ID, lastDate) || 0);
+  const benchFinal =
+    benchmarkShares * (getPriceOnDate(BENCHMARK_ID, lastDate) || 0);
   const benchReturn = (benchFinal / totalContributed - 1) * 100;
 
   log("");
@@ -678,19 +823,30 @@ const run = async () => {
   log("═".repeat(80));
   log(`  Months:         ${monthCount}`);
   log(`  Contributed:    ${totalContributed.toLocaleString("sv-SE")} SEK`);
-  log(`  Final value:    ${Math.round(finalValue).toLocaleString("sv-SE")} SEK`);
-  log(`  Return:         ${totalReturn >= 0 ? "+" : ""}${totalReturn.toFixed(1)}%`);
-  log(`  Benchmark:      ${benchReturn >= 0 ? "+" : ""}${benchReturn.toFixed(1)}%`);
-  log(`  ALPHA:          ${(totalReturn - benchReturn) >= 0 ? "+" : ""}${(totalReturn - benchReturn).toFixed(1)}%`);
+  log(
+    `  Final value:    ${Math.round(finalValue).toLocaleString("sv-SE")} SEK`,
+  );
+  log(
+    `  Return:         ${totalReturn >= 0 ? "+" : ""}${totalReturn.toFixed(1)}%`,
+  );
+  log(
+    `  Benchmark:      ${benchReturn >= 0 ? "+" : ""}${benchReturn.toFixed(1)}%`,
+  );
+  log(
+    `  ALPHA:          ${totalReturn - benchReturn >= 0 ? "+" : ""}${(totalReturn - benchReturn).toFixed(1)}%`,
+  );
   log(`  Max drawdown:   ${maxDrawdown.toFixed(1)}%`);
   log(`  Total trades:   ${totalTrades}`);
 
   // Slot count distribution
   const slotDist = new Map<number, number>();
-  for (const s of slotHistory) slotDist.set(s.slots, (slotDist.get(s.slots) || 0) + 1);
+  for (const s of slotHistory)
+    slotDist.set(s.slots, (slotDist.get(s.slots) || 0) + 1);
   log("");
   log("  SLOT COUNT DISTRIBUTION:");
-  for (const [slots, count] of [...slotDist.entries()].sort((a, b) => a[0] - b[0])) {
+  for (const [slots, count] of [...slotDist.entries()].sort(
+    (a, b) => a[0] - b[0],
+  )) {
     const pct = ((count / slotHistory.length) * 100).toFixed(0);
     log(`    ${slots} slots: ${count} months (${pct}%)`);
   }
@@ -713,14 +869,26 @@ const run = async () => {
   log("  ─────────────────────────────────────────────────────────────");
   for (let i = 0; i < yearSnapshots.length; i++) {
     const snap = yearSnapshots[i];
-    const prevPV = i === 0 ? INITIAL_CAPITAL : yearSnapshots[i - 1].portfolioValue;
+    const prevPV =
+      i === 0 ? INITIAL_CAPITAL : yearSnapshots[i - 1].portfolioValue;
     const prevBM = i === 0 ? INITIAL_CAPITAL : yearSnapshots[i - 1].bmValue;
-    const contribThisYear = snap.contributed - (i === 0 ? INITIAL_CAPITAL : yearSnapshots[i - 1].contributed);
-    const pReturn = ((snap.portfolioValue - prevPV - contribThisYear) / (prevPV + contribThisYear / 2)) * 100;
-    const bReturn = ((snap.bmValue - prevBM - contribThisYear) / (prevBM + contribThisYear / 2)) * 100;
+    const contribThisYear =
+      snap.contributed -
+      (i === 0 ? INITIAL_CAPITAL : yearSnapshots[i - 1].contributed);
+    const pReturn =
+      ((snap.portfolioValue - prevPV - contribThisYear) /
+        (prevPV + contribThisYear / 2)) *
+      100;
+    const bReturn =
+      ((snap.bmValue - prevBM - contribThisYear) /
+        (prevBM + contribThisYear / 2)) *
+      100;
     const alpha = pReturn - bReturn;
-    const yearLabel = i === yearSnapshots.length - 1 ? `${snap.year}*` : `${snap.year}`;
-    log(`  ${yearLabel.padEnd(7)}  ${`${pReturn >= 0 ? "+" : ""}${pReturn.toFixed(1)}%`.padStart(10)}  ${`${bReturn >= 0 ? "+" : ""}${bReturn.toFixed(1)}%`.padStart(11)}  ${`${alpha >= 0 ? "+" : ""}${alpha.toFixed(1)}%`.padStart(8)}`);
+    const yearLabel =
+      i === yearSnapshots.length - 1 ? `${snap.year}*` : `${snap.year}`;
+    log(
+      `  ${yearLabel.padEnd(7)}  ${`${pReturn >= 0 ? "+" : ""}${pReturn.toFixed(1)}%`.padStart(10)}  ${`${bReturn >= 0 ? "+" : ""}${bReturn.toFixed(1)}%`.padStart(11)}  ${`${alpha >= 0 ? "+" : ""}${alpha.toFixed(1)}%`.padStart(8)}`,
+    );
   }
   log("  (* partial year)");
 
@@ -729,4 +897,7 @@ const run = async () => {
   await prisma.$disconnect();
 };
 
-run().catch((err) => { console.error(err); process.exit(1); });
+run().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

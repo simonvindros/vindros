@@ -256,9 +256,7 @@ const applySplits = async () => {
     return;
   }
 
-  console.log(
-    `  ${unapplied.length} unapplied split(s) — checking prices...`,
-  );
+  console.log(`  ${unapplied.length} unapplied split(s) — checking prices...`);
 
   // Step 4: For each unapplied split, compare stored vs API price at split date
   // Group by instrumentId to avoid re-fetching the same instrument multiple times
@@ -426,8 +424,6 @@ const main = async () => {
 
     // Phase 2: fetch today's latest
     await fetchLatest();
-
-
 
     console.log("\n✓ Done!");
   } catch (error) {

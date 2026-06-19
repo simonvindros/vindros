@@ -21,6 +21,7 @@
     "vindros": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindros.ts",
     "vindros:signals": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindrosSignals.ts",
     "vindros:signals:60": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindrosSignals.ts -- --reg=60",
+    "vindros:dynamic": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/scripts/vindrosDynamicSignals.ts",
     "vindros:analysis": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_analysis.ts",
     "vindros:analysis:60": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' ts-node src/backtest/vindros_analysis.ts -- --reg=60",
     "vindros:us": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=8192 ts-node src/backtest/vindros_us.ts",

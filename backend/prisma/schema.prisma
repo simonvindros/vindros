@@ -27,6 +27,7 @@ model Instrument {
   kpiValues           KpiValue[]
 
   technicalIndicator TechnicalIndicator[]
+  quarterlyReports  QuarterlyReport[]
 }
 
 model StockPrice {
@@ -107,6 +108,35 @@ model TechnicalIndicator {
   instrument Instrument @relation(fields: [instrumentId], references: [id])
 
   @@unique([instrumentId, date, type])
+}
+
+model QuarterlyReport {
+  id                Int       @id @default(autoincrement())
+  instrumentId      Int
+  year              Int
+  period            Int       // 1-4
+  revenues          Decimal?
+  grossIncome       Decimal?
+  operatingIncome   Decimal?
+  profitBeforeTax   Decimal?
+  earningsPerShare  Decimal?
+  numberOfShares    Decimal?
+  totalEquity       Decimal?
+  totalAssets       Decimal?
+  netDebt           Decimal?
+  cashAndEquivalents Decimal?
+  freeCashFlow      Decimal?
+  cashFlowFromOperatingActivities Decimal?
+  reportStartDate   DateTime?
+  reportEndDate     DateTime?
+  reportDate        DateTime? // When the report was published
+  currency          String?
+  currencyRatio     Decimal?
+  createdAt         DateTime  @default(now())
+
+  instrument        Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@unique([instrumentId, year, period])
 }
 
 model StockSplit {

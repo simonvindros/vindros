@@ -681,10 +681,7 @@ const run = async () => {
           }
         } else {
           // New position
-          const buyShares = Math.min(
-            targetShares,
-            Math.floor(cash / price),
-          );
+          const buyShares = Math.min(targetShares, Math.floor(cash / price));
           if (buyShares > 0) {
             positions.push({
               instrumentId: a.instrumentId,
