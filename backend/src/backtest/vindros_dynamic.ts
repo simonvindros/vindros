@@ -33,8 +33,17 @@ const REG_SHORT = 60;
 const MIN_PRICE = 10;
 const MIN_R2 = 0.6;
 const SALARY_DAY = 23;
-const LARGE_MID_MARKETS = [1, 2];
-const SMALL_MARKETS = [3, 4, 5];
+
+// ─── Configurable parameters (override via CLI args) ─────────────────────────
+// Execution lag: how many trading days after signal before we buy (0 = same day)
+const EXECUTION_LAG = parseInt(process.env.EXEC_LAG || "0", 10);
+// Universe: which market IDs to use (default: all Swedish markets 1-5)
+const LARGE_MID_MARKETS = (process.env.LARGE_MID_MARKETS || "1,2")
+  .split(",")
+  .map(Number);
+const SMALL_MARKETS = (process.env.SMALL_MARKETS || "3,4,5")
+  .split(",")
+  .map(Number);
 
 // Fundamental thresholds (small caps)
 const MIN_REVENUE_GROWTH = 10;
@@ -187,6 +196,13 @@ function getQualifiedSmallCaps(
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 const run = async () => {
+  log("═══ VINDROS DYNAMIC ═══");
+  log(`Execution lag: ${EXECUTION_LAG} trading days`);
+  log(
+    `Universe: Large/Mid markets [${LARGE_MID_MARKETS}], Small markets [${SMALL_MARKETS}]`,
+  );
+  log("");
+
   // Load all instruments (including B-shares for substitution)
   const allDbInstruments = await prisma.instrument.findMany({
     select: { id: true, name: true, marketId: true },
@@ -332,6 +348,22 @@ const run = async () => {
     const reg = linearRegression(slice, Math.floor(REG_SHORT * 0.67));
     if (reg.slope <= 0 || reg.r2 < MIN_R2) return undefined;
     return { slope: reg.slope * 252, r2: reg.r2 };
+  };
+
+  // Get the price N trading days after a given date (for execution lag)
+  const getLaggedPrice = (
+    instId: number,
+    dateStr: string,
+    lagDays: number,
+  ): number | undefined => {
+    if (lagDays === 0) return getPriceOnDate(instId, dateStr);
+    const prices = pricesByInstrument.get(instId);
+    if (!prices) return undefined;
+    const idx = getPriceIndex(instId, dateStr);
+    if (idx < 0) return undefined;
+    const targetIdx = idx + lagDays;
+    if (targetIdx >= prices.length) return prices[prices.length - 1].close;
+    return prices[targetIdx].close;
   };
 
   const getADV = (instId: number, dateStr: string): number => {
@@ -680,10 +712,10 @@ const run = async () => {
         }
       }
 
-      // Buy new entries at their allocated amount
+      // Buy new entries at their allocated amount (with execution lag)
       for (const a of allocations) {
         if (heldSignalIds.has(a.instrumentId)) continue;
-        const price = getPriceOnDate(a.tradeId, day);
+        const price = getLaggedPrice(a.tradeId, day, EXECUTION_LAG);
         if (!price) continue;
         const shares = Math.floor(Math.min(a.allocation, cash) / price);
         if (shares === 0) continue;

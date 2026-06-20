@@ -35,7 +35,16 @@
     "montecarlo:dayshift-full": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/montecarlo_dayshift_full.ts",
     "montecarlo:dayshift-full:60": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/montecarlo_dayshift_full.ts --reg=60",
     "sweep": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/parameter_sweep.ts",
-    "attribution": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/stock_attribution.ts"
+    "attribution": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/stock_attribution.ts",
+    "jitter": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/rank_jitter.ts",
+    "race": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/race_to_1m.ts",
+    "dynamic": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/vindros_dynamic.ts",
+    "quintile": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/quintile_analysis.ts",
+    "turnover": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/turnover_analysis.ts",
+    "sectors": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/sector_analysis.ts",
+    "volatility": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/volatility_analysis.ts",
+    "signals": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/simple_signal.ts",
+    "liquidity": "TS_NODE_COMPILER_OPTIONS='{\"rootDir\":\".\"}' cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/backtest/liquidity_analysis.ts"
   },
   "keywords": [],
   "author": "",

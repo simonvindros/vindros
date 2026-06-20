@@ -14,9 +14,9 @@ import * as path from "node:path";
 import { prisma } from "../lib/prisma";
 import { linearRegression } from "./utils";
 
-// Parse --reg=N from CLI args (default 90)
+// Parse --reg=N from CLI args (default 60)
 const regArg = process.argv.find((a) => a.startsWith("--reg="));
-const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 90;
+const REG_WINDOW = regArg ? parseInt(regArg.split("=")[1]) : 60;
 
 // Parse --pos=N from CLI args (default 15)
 const posArg = process.argv.find((a) => a.startsWith("--pos="));
@@ -26,7 +26,7 @@ const OUTPUT_FILE = path.join(
   __dirname,
   POS_COUNT !== 15
     ? `vindros_analysis_output_${REG_WINDOW}d_${POS_COUNT}pos.txt`
-    : REG_WINDOW === 90
+    : REG_WINDOW === 60
       ? "vindros_analysis_output.txt"
       : `vindros_analysis_output_${REG_WINDOW}d.txt`,
 );
