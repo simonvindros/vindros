@@ -37,22 +37,10 @@ const SALARY_DAY = 23;
 // ─── Configurable parameters (override via CLI args) ─────────────────────────
 // Execution lag: how many trading days after signal before we buy (0 = same day)
 const EXECUTION_LAG = parseInt(process.env.EXEC_LAG || "0", 10);
-// Universe: which market IDs to use (default: all Swedish markets 1-5)
+// Universe: Large + Mid Cap only (OMX Stockholm markets 1,2)
 const LARGE_MID_MARKETS = (process.env.LARGE_MID_MARKETS || "1,2")
   .split(",")
   .map(Number);
-const SMALL_MARKETS = (process.env.SMALL_MARKETS || "3,4,5")
-  .split(",")
-  .map(Number);
-
-// Fundamental thresholds (small caps)
-const MIN_REVENUE_GROWTH = 10;
-const MIN_REVENUE_MSEK = 50;
-const MIN_OPERATING_MARGIN = 5;
-const MIN_YEARS_DATA = 2;
-const KPI_REVENUE_GROWTH = 94;
-const KPI_OPERATING_MARGIN = 29;
-const KPI_REVENUE = 53;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type PriceRow = { date: Date; close: number; volume: number };
@@ -63,144 +51,13 @@ type Position = {
   entryDate: string;
   entryPrice: number;
   shares: number;
-  pool: "large" | "small";
 };
-
-type KpiData = Map<number, Map<number, Map<number, number>>>;
-let kpiData: KpiData = new Map();
-type QKpiData = Map<number, Map<number, Array<{ key: number; value: number }>>>;
-let qKpiData: QKpiData = new Map();
-
-async function loadKpiData(instrumentIds: number[]) {
-  const kpiValues = await prisma.kpiValue.findMany({
-    where: {
-      instrumentId: { in: instrumentIds },
-      kpiId: { in: [KPI_REVENUE_GROWTH, KPI_OPERATING_MARGIN, KPI_REVENUE] },
-      reportType: "year",
-      priceType: "mean",
-    },
-    select: { instrumentId: true, kpiId: true, year: true, value: true },
-  });
-  for (const kv of kpiValues) {
-    if (kv.value === null) continue;
-    if (!kpiData.has(kv.instrumentId)) kpiData.set(kv.instrumentId, new Map());
-    const instMap = kpiData.get(kv.instrumentId)!;
-    if (!instMap.has(kv.kpiId)) instMap.set(kv.kpiId, new Map());
-    instMap.get(kv.kpiId)!.set(kv.year, Number(kv.value));
-  }
-  const qKpiValues = await prisma.kpiValue.findMany({
-    where: {
-      instrumentId: { in: instrumentIds },
-      kpiId: { in: [KPI_REVENUE_GROWTH, KPI_OPERATING_MARGIN] },
-      reportType: "quarter",
-      priceType: "mean",
-    },
-    select: {
-      instrumentId: true,
-      kpiId: true,
-      year: true,
-      period: true,
-      value: true,
-    },
-  });
-  for (const kv of qKpiValues) {
-    if (kv.value === null) continue;
-    if (!qKpiData.has(kv.instrumentId))
-      qKpiData.set(kv.instrumentId, new Map());
-    const instMap = qKpiData.get(kv.instrumentId)!;
-    if (!instMap.has(kv.kpiId)) instMap.set(kv.kpiId, []);
-    instMap
-      .get(kv.kpiId)!
-      .push({ key: kv.year * 10 + (kv.period ?? 0), value: Number(kv.value) });
-  }
-  for (const instMap of qKpiData.values()) {
-    for (const arr of instMap.values()) arr.sort((a, b) => a.key - b.key);
-  }
-}
-
-function latestAvailableQuarter(dateStr: string) {
-  const month = parseInt(dateStr.slice(5, 7));
-  const year = parseInt(dateStr.slice(0, 4));
-  const currentQ = Math.ceil(month / 3);
-  if (currentQ === 1) return { year: year - 1, period: 4 };
-  return { year, period: currentQ - 1 };
-}
-
-function getQualifiedSmallCaps(
-  instrumentIds: number[],
-  asOfYear: number,
-  asOfQuarterYear: number,
-  asOfPeriod: number,
-): Set<number> {
-  const annualQualified = new Set<number>();
-  for (const instId of instrumentIds) {
-    const kpiMap = kpiData.get(instId);
-    if (!kpiMap) continue;
-    const revGrowthMap = kpiMap.get(KPI_REVENUE_GROWTH);
-    if (!revGrowthMap) continue;
-    const revGrowthYears = [...revGrowthMap.entries()]
-      .filter(([y]) => y <= asOfYear)
-      .sort((a, b) => a[0] - b[0]);
-    if (revGrowthYears.length < 1) continue;
-    const recent = revGrowthYears.slice(-5);
-    const avgRevGrowth = recent.reduce((s, [, v]) => s + v, 0) / recent.length;
-    if (avgRevGrowth < MIN_REVENUE_GROWTH) continue;
-    const last4 = revGrowthYears.slice(-4);
-    if (last4.filter(([, v]) => v < 0).length > 1) continue;
-    // Outlier check: reject <-30% always; for >200% spikes, allow if next year grew >20%
-    let hasUnvalidatedSpike = false;
-    for (let i = 0; i < recent.length; i++) {
-      const [yr, v] = recent[i];
-      if (v < -30) {
-        hasUnvalidatedSpike = true;
-        break;
-      }
-      if (v > 200) {
-        // Check if the year after the spike also grew >20% (sustained = legitimate)
-        const nextEntry = revGrowthYears.find(([y]) => y === yr + 1);
-        if (!nextEntry || nextEntry[1] <= 20) {
-          hasUnvalidatedSpike = true;
-          break;
-        }
-      }
-    }
-    if (hasUnvalidatedSpike) continue;
-    const revenueMap = kpiMap.get(KPI_REVENUE);
-    if (revenueMap) {
-      const latest = [...revenueMap.entries()]
-        .filter(([y]) => y <= asOfYear)
-        .sort((a, b) => a[0] - b[0])
-        .pop();
-      if (latest && latest[1] < MIN_REVENUE_MSEK) continue;
-    }
-    annualQualified.add(instId);
-  }
-  const cutoff = asOfQuarterYear * 10 + asOfPeriod;
-  const qualified = new Set<number>();
-  for (const instId of annualQualified) {
-    const instQ = qKpiData.get(instId);
-    if (!instQ) {
-      qualified.add(instId);
-      continue;
-    }
-    const revQ = instQ.get(KPI_REVENUE_GROWTH);
-    if (revQ && revQ.length > 0) {
-      const available = revQ.filter((x) => x.key <= cutoff);
-      if (available.length > 0 && available[available.length - 1].value < -10)
-        continue;
-    }
-    qualified.add(instId);
-  }
-  return qualified;
-}
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 const run = async () => {
   log("═══ VINDROS DYNAMIC ═══");
   log(`Execution lag: ${EXECUTION_LAG} trading days`);
-  log(
-    `Universe: Large/Mid markets [${LARGE_MID_MARKETS}], Small markets [${SMALL_MARKETS}]`,
-  );
+  log(`Universe: Large/Mid markets [${LARGE_MID_MARKETS}]`);
   log("");
 
   // Load all instruments (including B-shares for substitution)
@@ -222,22 +79,15 @@ const run = async () => {
   }
   log(`A→B substitution pairs: ${aToBMap.size}`);
 
-  const largeMidInstruments = allDbInstruments.filter(
+  const instruments = allDbInstruments.filter(
     (i) => i.marketId !== null && LARGE_MID_MARKETS.includes(i.marketId),
   );
-  const smallInstruments = allDbInstruments.filter(
-    (i) => i.marketId !== null && SMALL_MARKETS.includes(i.marketId),
-  );
 
-  const allInstruments = [...largeMidInstruments, ...smallInstruments];
-  const allIds = allInstruments.map((i) => i.id);
+  const allIds = instruments.map((i) => i.id);
   const nameMap = new Map<number, string>(
     allDbInstruments.map((i) => [i.id, i.name]),
   );
-  const smallIds = smallInstruments.map((i) => i.id);
-  const largeMidIdSet = new Set(largeMidInstruments.map((i) => i.id));
-
-  await loadKpiData(smallIds);
+  const instrumentIdSet = new Set(allIds);
 
   // Also need prices for B-shares we might substitute into
   const bShareIds = [...new Set([...aToBMap.values()])];
@@ -392,15 +242,14 @@ const run = async () => {
   };
 
   // Get all candidates sorted by slope (NO ADV filter — that's handled dynamically)
-  const getAllCandidates = (dateStr: string, qualifiedSmall: Set<number>) => {
+  const getAllCandidates = (dateStr: string) => {
     type Candidate = {
       instrumentId: number;
       slope: number;
       r2: number;
-      pool: "large" | "small";
     };
     const candidates: Candidate[] = [];
-    for (const instId of largeMidIdSet) {
+    for (const instId of instrumentIdSet) {
       const price = getPriceOnDate(instId, dateStr);
       if (!price || price < MIN_PRICE) continue;
       const reg = getRegressionScore(instId, dateStr);
@@ -409,19 +258,6 @@ const run = async () => {
         instrumentId: instId,
         slope: reg.slope,
         r2: reg.r2,
-        pool: "large",
-      });
-    }
-    for (const instId of qualifiedSmall) {
-      const price = getPriceOnDate(instId, dateStr);
-      if (!price || price < MIN_PRICE) continue;
-      const reg = getRegressionScore(instId, dateStr);
-      if (!reg) continue;
-      candidates.push({
-        instrumentId: instId,
-        slope: reg.slope,
-        r2: reg.r2,
-        pool: "small",
       });
     }
     candidates.sort((a, b) => b.slope - a.slope);
@@ -449,7 +285,6 @@ const run = async () => {
     tradeId: number;
     slope: number;
     r2: number;
-    pool: "large" | "small";
     allocation: number; // SEK to allocate
     capped: boolean;
   };
@@ -496,7 +331,6 @@ const run = async () => {
         tradeId,
         slope: c.slope,
         r2: c.r2,
-        pool: c.pool,
         allocation: actualAllocation,
         capped,
       });
@@ -554,8 +388,6 @@ const run = async () => {
   let benchmarkShares =
     INITIAL_CAPITAL / (getPriceOnDate(BENCHMARK_ID, tradingDates[0]) || 1);
 
-  let qualifiedSmallCaps = new Set<number>();
-  let lastQualifyYear = 0;
   let monthCount = 0;
   let totalTrades = 0;
 
@@ -592,23 +424,9 @@ const run = async () => {
       if (bmPrice) benchmarkShares += MONTHLY_CONTRIBUTION / bmPrice;
     }
 
-    const currentYear = parseInt(day.slice(0, 4));
-    const currentMonth = parseInt(day.slice(5, 7));
-    const currentQ = Math.ceil(currentMonth / 3);
-    const qualifyKey = currentYear * 10 + currentQ;
-    if (qualifyKey > lastQualifyYear) {
-      const avail = latestAvailableQuarter(day);
-      qualifiedSmallCaps = getQualifiedSmallCaps(
-        smallIds,
-        currentYear - 1,
-        avail.year,
-        avail.period,
-      );
-      lastQualifyYear = qualifyKey;
-    }
-
     if (monthEndSet.has(day)) {
       monthCount++;
+      const currentYear = parseInt(day.slice(0, 4));
 
       // Current portfolio value (sell everything conceptually, then reallocate)
       let currentPV = cash;
@@ -618,7 +436,7 @@ const run = async () => {
       }
 
       // Get all candidates and allocate with liquidity caps
-      const allCandidates = getAllCandidates(day, qualifiedSmallCaps);
+      const allCandidates = getAllCandidates(day);
       const { allocations, expansionReason } = allocatePositions(
         allCandidates,
         currentPV,
@@ -638,7 +456,7 @@ const run = async () => {
       );
 
       // Determine sells
-      const sells: { name: string; pool: string; returnPct: string }[] = [];
+      const sells: { name: string; returnPct: string }[] = [];
       const keepPositions: Position[] = [];
       for (const pos of positions) {
         if (allSelectedSignalIds.has(pos.instrumentId)) {
@@ -649,7 +467,6 @@ const run = async () => {
             const ret = (price / pos.entryPrice - 1) * 100;
             sells.push({
               name: nameMap.get(pos.tradeId) || pos.name,
-              pool: pos.pool,
               returnPct: `${ret >= 0 ? "+" : ""}${ret.toFixed(1)}%`,
             });
             cash += price * pos.shares;
@@ -664,7 +481,6 @@ const run = async () => {
       const buys: {
         name: string;
         tradeName: string;
-        pool: string;
         slope: number;
         rank: number;
         capped: boolean;
@@ -677,7 +493,6 @@ const run = async () => {
             name: nameMap.get(a.instrumentId) || "",
             tradeName:
               a.tradeId !== a.instrumentId ? nameMap.get(a.tradeId) || "" : "",
-            pool: a.pool,
             slope: a.slope,
             rank: i + 1,
             capped: a.capped,
@@ -726,7 +541,6 @@ const run = async () => {
           entryDate: day,
           entryPrice: price,
           shares,
-          pool: a.pool,
         });
         cash -= shares * price;
         totalTrades++;
@@ -776,7 +590,7 @@ const run = async () => {
           log("  SOLD:");
           for (const s of sells)
             log(
-              `    ✗ ${s.name.padEnd(28)} [${s.pool}] ${s.returnPct.padStart(7)}`,
+              `    ✗ ${s.name.padEnd(28)} ${s.returnPct.padStart(7)}`,
             );
         }
         if (buys.length > 0) {
@@ -785,7 +599,7 @@ const run = async () => {
             const sub = b.tradeName ? ` → trade ${b.tradeName}` : "";
             const cap = b.capped ? " [CAPPED]" : "";
             log(
-              `    ✓ ${b.name.padEnd(28)} [${b.pool}] #${b.rank} slope:${b.slope.toFixed(2)}${sub}${cap}`,
+              `    ✓ ${b.name.padEnd(28)} #${b.rank} slope:${b.slope.toFixed(2)}${sub}${cap}`,
             );
           }
         }

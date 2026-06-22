@@ -1,18 +1,17 @@
 /**
  * VINDROS DYNAMIC SIGNALS — Actionable monthly rebalance for the 3-slot strategy
  *
- * Computes today's target portfolio using the dynamic allocation mechanic:
- *   - 3 target positions, ADV overflow to #4, #5, etc.
+ * Computes today's target portfolio using the same logic as vindros_dynamic.ts:
+ *   - Universe: Large + Mid Cap (markets 1, 2)
+ *   - Signal: 60-day linear regression, slope > 0, R² ≥ 0.6
+ *   - Rank by slope, 3 target positions, ADV overflow to #4, #5, etc.
  *   - A→B share substitution for liquidity
- *   - No operating margin filter (dynamic variant)
- *   - Quarterly freshness check (revenue growth only)
  *
- * Diffs against vindros_portfolio.json and outputs BUY/SELL/HOLD actions.
+ * Diffs against vindros_dynamic_portfolio.json and outputs BUY/SELL/HOLD actions.
  *
  * Usage:
- *   cd backend
- *   TS_NODE_COMPILER_OPTIONS='{"rootDir":"."}' npx ts-node src/scripts/vindrosDynamicSignals.ts
- *   TS_NODE_COMPILER_OPTIONS='{"rootDir":"."}' npx ts-node src/scripts/vindrosDynamicSignals.ts --execute
+ *   npm run vindros:dynamic
+ *   npm run vindros:dynamic -- --execute
  */
 import dotenv from "dotenv";
 dotenv.config();
@@ -26,7 +25,7 @@ const OUTPUT_FILE = path.join(__dirname, "../../vindros_dynamic_signals.txt");
 const PORTFOLIO_FILE = path.join(__dirname, "../../vindros_portfolio.json");
 const EXECUTE_MODE = process.argv.includes("--execute");
 
-// ─── Configuration (matches vindros_dynamic.ts) ─────────────────────────────
+// ─── Configuration (matches vindros_dynamic.ts exactly) ─────────────────────
 const MIN_POSITIONS = 3;
 const MAX_POSITIONS = 15;
 const MAX_ADV_FRACTION = 0.1;
@@ -36,13 +35,6 @@ const REG_SHORT = 60;
 const MIN_PRICE = 10;
 const MIN_R2 = 0.6;
 const LARGE_MID_MARKETS = [1, 2];
-const SMALL_MARKETS = [3, 4, 5];
-
-// Fundamental thresholds (no operating margin for dynamic)
-const MIN_REVENUE_GROWTH = 10;
-const MIN_REVENUE_MSEK = 50;
-const KPI_REVENUE_GROWTH = 94;
-const KPI_REVENUE = 53;
 
 type PriceRow = { date: Date; close: number; volume: number };
 type Holding = { name: string; shares: number; avgPrice: number };
@@ -60,133 +52,13 @@ const log = (msg = "") => {
   console.log(msg);
 };
 
-// ─── Quality filter (dynamic variant — no margin) ───────────────────────────
-function latestAvailableQuarter(): { year: number; period: number } {
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-  const currentQ = Math.ceil(month / 3);
-  if (currentQ === 1) return { year: year - 1, period: 4 };
-  return { year, period: currentQ - 1 };
-}
-
-async function getQualifiedSmallCaps(
-  instrumentIds: number[],
-): Promise<Set<number>> {
-  const currentYear = new Date().getFullYear();
-  const asOfYear = currentYear - 1;
-  const avail = latestAvailableQuarter();
-
-  const annualKpis = await prisma.kpiValue.findMany({
-    where: {
-      instrumentId: { in: instrumentIds },
-      kpiId: { in: [KPI_REVENUE_GROWTH, KPI_REVENUE] },
-      reportType: "year",
-      priceType: "mean",
-    },
-    select: { instrumentId: true, kpiId: true, year: true, value: true },
-  });
-
-  const data = new Map<number, Map<number, Map<number, number>>>();
-  for (const kv of annualKpis) {
-    if (kv.value === null) continue;
-    if (!data.has(kv.instrumentId)) data.set(kv.instrumentId, new Map());
-    const instMap = data.get(kv.instrumentId)!;
-    if (!instMap.has(kv.kpiId)) instMap.set(kv.kpiId, new Map());
-    instMap.get(kv.kpiId)!.set(kv.year, Number(kv.value));
-  }
-
-  const annualQualified = new Set<number>();
-
-  for (const [instId, kpiMap] of data) {
-    const revGrowthMap = kpiMap.get(KPI_REVENUE_GROWTH);
-    if (!revGrowthMap) continue;
-    const revGrowthYears = [...revGrowthMap.entries()]
-      .filter(([y]) => y <= asOfYear)
-      .sort((a, b) => a[0] - b[0]);
-    if (revGrowthYears.length < 1) continue;
-    const recent = revGrowthYears.slice(-5);
-    const avgRevGrowth = recent.reduce((s, [, v]) => s + v, 0) / recent.length;
-    if (avgRevGrowth < MIN_REVENUE_GROWTH) continue;
-    const last4 = revGrowthYears.slice(-4);
-    if (last4.filter(([, v]) => v < 0).length > 1) continue;
-    // Spike check
-    let hasUnvalidatedSpike = false;
-    for (let i = 0; i < recent.length; i++) {
-      const [yr, v] = recent[i];
-      if (v < -30) {
-        hasUnvalidatedSpike = true;
-        break;
-      }
-      if (v > 200) {
-        const nextEntry = revGrowthYears.find(([y]) => y === yr + 1);
-        if (!nextEntry || nextEntry[1] <= 20) {
-          hasUnvalidatedSpike = true;
-          break;
-        }
-      }
-    }
-    if (hasUnvalidatedSpike) continue;
-
-    const revenueMap = kpiMap.get(KPI_REVENUE);
-    if (revenueMap) {
-      const latest = [...revenueMap.entries()]
-        .filter(([y]) => y <= asOfYear)
-        .sort((a, b) => a[0] - b[0])
-        .pop();
-      if (latest && latest[1] < MIN_REVENUE_MSEK) continue;
-    }
-
-    annualQualified.add(instId);
-  }
-
-  // Quarterly freshness check (revenue growth only, no margin)
-  const quarterlyKpis = await prisma.kpiValue.findMany({
-    where: {
-      instrumentId: { in: [...annualQualified] },
-      kpiId: KPI_REVENUE_GROWTH,
-      reportType: "quarter",
-      priceType: "mean",
-    },
-    select: {
-      instrumentId: true,
-      year: true,
-      period: true,
-      value: true,
-    },
-  });
-
-  const cutoff = avail.year * 10 + avail.period;
-  const qData = new Map<number, Array<{ key: number; value: number }>>();
-  for (const kv of quarterlyKpis) {
-    if (kv.value === null || kv.period === null) continue;
-    const key = kv.year * 10 + kv.period;
-    if (key > cutoff) continue;
-    if (!qData.has(kv.instrumentId)) qData.set(kv.instrumentId, []);
-    qData.get(kv.instrumentId)!.push({ key, value: Number(kv.value) });
-  }
-
-  const qualified = new Set<number>();
-  for (const instId of annualQualified) {
-    const revQ = qData.get(instId);
-    if (!revQ || revQ.length === 0) {
-      qualified.add(instId);
-      continue;
-    }
-    revQ.sort((a, b) => a.key - b.key);
-    if (revQ[revQ.length - 1].value < -10) continue;
-    qualified.add(instId);
-  }
-
-  return qualified;
-}
-
 // ─── Main ────────────────────────────────────────────────────────────────────
 const run = async () => {
   const today = new Date().toISOString().slice(0, 10);
   log(`VINDROS DYNAMIC SIGNALS — ${today}`);
   log("═".repeat(70));
   log(`  Strategy: 3-slot concentrated, ADV overflow, A→B substitution`);
+  log(`  Universe: Large + Mid Cap [${LARGE_MID_MARKETS}]`);
   log(
     `  Regression: ${REG_SHORT}-day, R² ≥ ${MIN_R2}, price ≥ ${MIN_PRICE} SEK`,
   );
@@ -203,51 +75,34 @@ const run = async () => {
   // Build A→B substitution map
   const aToBMap = new Map<number, number>();
   const bToAMap = new Map<number, number>();
-  for (const inst of allDbInstruments) {
-    if (inst.name.endsWith(" A")) {
-      const bName = inst.name.slice(0, -2) + " B";
-      const bInst = allDbInstruments.find((i) => i.name === bName);
-      if (bInst) {
-        aToBMap.set(inst.id, bInst.id);
-        bToAMap.set(bInst.id, inst.id);
-      }
+  const aShares = allDbInstruments.filter((i) => / A$/.test(i.name));
+  for (const a of aShares) {
+    const bName = a.name.replace(/ A$/, " B");
+    const b = allDbInstruments.find((i) => i.name === bName);
+    if (b) {
+      aToBMap.set(a.id, b.id);
+      bToAMap.set(b.id, a.id);
     }
   }
   log(`  A→B substitution pairs: ${aToBMap.size}`);
 
-  const largeMidIds = allDbInstruments
-    .filter(
-      (i) =>
-        i.marketId !== null &&
-        LARGE_MID_MARKETS.includes(i.marketId) &&
-        !bToAMap.has(i.id),
-    )
-    .map((i) => i.id);
-  const smallIds = allDbInstruments
-    .filter(
-      (i) =>
-        i.marketId !== null &&
-        SMALL_MARKETS.includes(i.marketId) &&
-        !bToAMap.has(i.id),
-    )
-    .map((i) => i.id);
+  // Universe: Large + Mid only
+  const instruments = allDbInstruments.filter(
+    (i) => i.marketId !== null && LARGE_MID_MARKETS.includes(i.marketId),
+  );
+  const allIds = instruments.map((i) => i.id);
+  const instrumentIdSet = new Set(allIds);
 
-  const largeMidIdSet = new Set(largeMidIds);
-  const allIds = [
-    ...new Set([
-      ...largeMidIds,
-      ...smallIds,
-      ...[...aToBMap.values()],
-      ...[...bToAMap.values()],
-    ]),
-  ];
+  // Also need prices for B-shares we might substitute into
+  const bShareIds = [...new Set([...aToBMap.values()])];
+  const allNeededIds = [...new Set([...allIds, ...bShareIds])];
 
-  // Load prices
+  // Load last 200 days of prices
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 200);
 
   const allPrices = await prisma.stockPrice.findMany({
-    where: { instrumentId: { in: allIds }, date: { gte: startDate } },
+    where: { instrumentId: { in: allNeededIds }, date: { gte: startDate } },
     select: { instrumentId: true, date: true, close: true, volume: true },
     orderBy: [{ instrumentId: "asc" }, { date: "asc" }],
   });
@@ -263,13 +118,14 @@ const run = async () => {
     });
   }
 
+  // ─── Helpers (same as vindros_dynamic.ts) ─────────────────────────────────
   const getLatestPrice = (instId: number): number | undefined => {
     const prices = pricesByInstrument.get(instId);
     if (!prices || prices.length === 0) return undefined;
     return prices[prices.length - 1].close;
   };
 
-  const getSlope = (
+  const getRegressionScore = (
     instId: number,
   ): { slope: number; r2: number } | undefined => {
     const prices = pricesByInstrument.get(instId);
@@ -306,59 +162,33 @@ const run = async () => {
     return { adv, tradeId: instId };
   };
 
-  // Get quality-filtered small caps
-  const qualifiedSmall = await getQualifiedSmallCaps(smallIds);
-  log(`  Qualified small caps: ${qualifiedSmall.size}`);
-
-  // Build unified candidate list
-  type Candidate = {
-    instrumentId: number;
-    slope: number;
-    r2: number;
-    pool: "large" | "small";
-  };
+  // ─── Build candidate list (slope-ranked, deduped) ─────────────────────────
+  type Candidate = { instrumentId: number; slope: number; r2: number };
   const candidates: Candidate[] = [];
 
-  for (const instId of largeMidIdSet) {
+  for (const instId of instrumentIdSet) {
     const price = getLatestPrice(instId);
     if (!price || price < MIN_PRICE) continue;
-    const reg = getSlope(instId);
+    const reg = getRegressionScore(instId);
     if (!reg) continue;
-    candidates.push({
-      instrumentId: instId,
-      slope: reg.slope,
-      r2: reg.r2,
-      pool: "large",
-    });
-  }
-  for (const instId of qualifiedSmall) {
-    const price = getLatestPrice(instId);
-    if (!price || price < MIN_PRICE) continue;
-    const reg = getSlope(instId);
-    if (!reg) continue;
-    candidates.push({
-      instrumentId: instId,
-      slope: reg.slope,
-      r2: reg.r2,
-      pool: "small",
-    });
+    candidates.push({ instrumentId: instId, slope: reg.slope, r2: reg.r2 });
   }
   candidates.sort((a, b) => b.slope - a.slope);
 
-  // Deduplicate A/B shares
+  // Deduplicate by company (strip A/B suffix)
   const seenCompanies = new Set<string>();
   const deduped: Candidate[] = [];
   for (const c of candidates) {
-    const rawName = nameMap.get(c.instrumentId) || "";
+    const rawName = nameMap.get(c.instrumentId) || String(c.instrumentId);
     const companyName = rawName.replace(/ [AB]$/, "");
     if (seenCompanies.has(companyName)) continue;
     seenCompanies.add(companyName);
     deduped.push(c);
   }
 
-  log(`  Total candidates (after dedup): ${deduped.length}`);
+  log(`  Candidates qualifying: ${deduped.length}`);
 
-  // Load portfolio
+  // ─── Load portfolio ─────────────────────────────────────────────────────
   let portfolio: Portfolio;
   if (fs.existsSync(PORTFOLIO_FILE)) {
     const raw = JSON.parse(fs.readFileSync(PORTFOLIO_FILE, "utf-8"));
@@ -391,8 +221,8 @@ const run = async () => {
 
   // Calculate current portfolio value
   let portfolioValue = portfolio.cash;
-  for (const [name, h] of Object.entries(portfolio.holdings)) {
-    const inst = allDbInstruments.find((i) => i.name === name);
+  for (const [, h] of Object.entries(portfolio.holdings)) {
+    const inst = allDbInstruments.find((i) => i.name === h.name);
     const price = inst ? (getLatestPrice(inst.id) ?? h.avgPrice) : h.avgPrice;
     portfolioValue += h.shares * price;
   }
@@ -409,14 +239,13 @@ const run = async () => {
     `  Portfolio value: ${Math.round(portfolioValue).toLocaleString("sv-SE")} SEK`,
   );
 
-  // ─── Dynamic allocation ─────────────────────────────────────────────────
+  // ─── Dynamic allocation (matches vindros_dynamic.ts) ──────────────────────
   const targetPerSlot = portfolioValue / MIN_POSITIONS;
   type Allocation = {
     instrumentId: number;
     tradeId: number;
     slope: number;
     r2: number;
-    pool: "large" | "small";
     allocation: number;
     capped: boolean;
   };
@@ -426,7 +255,6 @@ const run = async () => {
   let candidateIdx = 0;
   const usedTradeIds = new Set<number>();
 
-  // Pass 1: allocate up to targetPerSlot each, capping at ADV limit
   while (
     remaining > 100 &&
     candidateIdx < deduped.length &&
@@ -454,7 +282,6 @@ const run = async () => {
       tradeId,
       slope: c.slope,
       r2: c.r2,
-      pool: c.pool,
       allocation: actualAllocation,
       capped,
     });
@@ -489,9 +316,10 @@ const run = async () => {
       }
     }
     remaining -= distributed;
+    if (distributed < 100) break;
   }
 
-  // ─── Output ─────────────────────────────────────────────────────────────
+  // ─── Output target portfolio ──────────────────────────────────────────────
   log("");
   log("═".repeat(70));
   log("TARGET PORTFOLIO");
@@ -500,9 +328,9 @@ const run = async () => {
   log(`  Slots: ${allocations.length} (target: ${MIN_POSITIONS})`);
   log("");
   log(
-    "  #   Stock                          Price     Slope   Weight   ADV        Alloc      Cap",
+    "  #   Stock                          Price     Slope    R²    Weight   ADV        Cap",
   );
-  log("  " + "─".repeat(95));
+  log("  " + "─".repeat(90));
 
   const targetHoldings = new Map<
     string,
@@ -517,13 +345,13 @@ const run = async () => {
     const weight = ((a.allocation / portfolioValue) * 100).toFixed(1);
     const { adv } = getEffectiveADV(a.instrumentId);
     const advStr =
-      adv >= 1e6 ? `${(adv / 1e6).toFixed(1)}M` : `${(adv / 1e3).toFixed(0)}k`;
-    const pctOfAdv = adv > 0 ? ((a.allocation / adv) * 100).toFixed(1) : "n/a";
+      adv >= 1e6
+        ? `${(adv / 1e6).toFixed(1)}M`
+        : `${(adv / 1e3).toFixed(0)}k`;
     const capLabel = a.capped ? "◄CAP" : "";
-    const poolLabel = a.pool === "small" ? "[S]" : "";
 
     log(
-      `  ${String(i + 1).padStart(2)}  ${(tradeName + " " + poolLabel).padEnd(30)} ${price.toFixed(1).padStart(8)} SEK  ${a.slope.toFixed(2).padStart(6)}  ${weight.padStart(5)}%  ${advStr.padStart(8)} (${pctOfAdv}%)  ${Math.round(a.allocation).toLocaleString("sv-SE").padStart(8)} SEK  ${capLabel}`,
+      `  ${String(i + 1).padStart(2)}  ${tradeName.padEnd(30)} ${price.toFixed(1).padStart(8)} SEK  ${a.slope.toFixed(2).padStart(6)}  ${a.r2.toFixed(2).padStart(5)}  ${weight.padStart(5)}%  ${advStr.padStart(8)}  ${capLabel}`,
     );
 
     targetHoldings.set(tradeName, { shares, price, allocation: a.allocation });
@@ -531,9 +359,9 @@ const run = async () => {
 
   const totalAllocated = allocations.reduce((s, a) => s + a.allocation, 0);
   const cashAfter = portfolioValue - totalAllocated;
-  log("  " + "─".repeat(95));
+  log("  " + "─".repeat(90));
   log(
-    `  TOTAL INVESTED: ${Math.round(totalAllocated).toLocaleString("sv-SE")} SEK   CASH: ${Math.round(cashAfter).toLocaleString("sv-SE")} SEK`,
+    `  INVESTED: ${Math.round(totalAllocated).toLocaleString("sv-SE")} SEK   CASH: ${Math.round(cashAfter).toLocaleString("sv-SE")} SEK`,
   );
 
   // ─── Actions: diff against current portfolio ────────────────────────────
@@ -557,7 +385,7 @@ const run = async () => {
     log("");
   }
 
-  // BUY / REBALANCE
+  // TARGET SHARES
   log("  TARGET SHARES:");
   log(
     "  Stock                          Current  Target   Action            ~Cost",
@@ -587,7 +415,7 @@ const run = async () => {
   }
   log("  " + "─".repeat(75));
 
-  // Execute mode
+  // Execute mode: save portfolio
   if (EXECUTE_MODE) {
     const newHoldings: Record<string, Holding> = {};
     for (const [name, target] of targetHoldings) {
