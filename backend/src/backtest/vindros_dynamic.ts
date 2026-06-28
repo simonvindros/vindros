@@ -589,9 +589,7 @@ const run = async () => {
         if (sells.length > 0) {
           log("  SOLD:");
           for (const s of sells)
-            log(
-              `    ✗ ${s.name.padEnd(28)} ${s.returnPct.padStart(7)}`,
-            );
+            log(`    ✗ ${s.name.padEnd(28)} ${s.returnPct.padStart(7)}`);
         }
         if (buys.length > 0) {
           log("  BOUGHT:");

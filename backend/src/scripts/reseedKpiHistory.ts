@@ -27,9 +27,11 @@ const PROGRESS_FILE = "./reseed-kpi-progress.json";
 // Extract ALL unique KPI targets from KPI_COMBINATIONS
 const KPI_TARGETS = Array.from(
   new Map(
-    KPI_COMBINATIONS
-      .map((c) => [`${c.kpiId}_${c.reportType}_${c.priceType}`, c])
-  ).values()
+    KPI_COMBINATIONS.map((c) => [
+      `${c.kpiId}_${c.reportType}_${c.priceType}`,
+      c,
+    ]),
+  ).values(),
 ).map((c) => ({
   ...c,
   maxCount: c.reportType === "year" ? 20 : 40,
@@ -45,10 +47,14 @@ async function main() {
 
   const totalTarget = KPI_TARGETS.length * instruments.length;
   console.log(`Re-seeding KPI history for ${instruments.length} instruments`);
-  console.log(`${KPI_TARGETS.length} unique KPI combinations (year/r12/quarter)`);
+  console.log(
+    `${KPI_TARGETS.length} unique KPI combinations (year/r12/quarter)`,
+  );
   console.log(`${completed.size} already completed — resuming...`);
   console.log(`Remaining: ~${totalTarget - completed.size} API calls`);
-  console.log(`At ${DELAY_MS}ms delay, ETA ~${Math.ceil((totalTarget - completed.size) * DELAY_MS / 3600000)} hours`);
+  console.log(
+    `At ${DELAY_MS}ms delay, ETA ~${Math.ceil(((totalTarget - completed.size) * DELAY_MS) / 3600000)} hours`,
+  );
 
   let totalNew = 0;
   let apiCalls = 0;
@@ -101,7 +107,9 @@ async function main() {
           saveProgress(PROGRESS_FILE, completed);
         } else {
           // Network error, rate limit, server error — do NOT mark done, will retry on next run
-          console.error(`  ✗ ${inst.name} (${inst.id}) KPI ${target.kpiId}: ${error.message}`);
+          console.error(
+            `  ✗ ${inst.name} (${inst.id}) KPI ${target.kpiId}: ${error.message}`,
+          );
         }
       }
 

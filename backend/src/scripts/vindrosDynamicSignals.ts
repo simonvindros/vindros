@@ -345,9 +345,7 @@ const run = async () => {
     const weight = ((a.allocation / portfolioValue) * 100).toFixed(1);
     const { adv } = getEffectiveADV(a.instrumentId);
     const advStr =
-      adv >= 1e6
-        ? `${(adv / 1e6).toFixed(1)}M`
-        : `${(adv / 1e3).toFixed(0)}k`;
+      adv >= 1e6 ? `${(adv / 1e6).toFixed(1)}M` : `${(adv / 1e3).toFixed(0)}k`;
     const capLabel = a.capped ? "◄CAP" : "";
 
     log(
