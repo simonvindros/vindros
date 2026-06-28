@@ -29,7 +29,7 @@ export const updateKpis = async () => {
 
   const instruments = await prisma.instrument.findMany({
     select: { id: true },
-    where: { countryId: 1 },
+    where: { countryId: { in: [1, 2, 3, 4] } },
   });
 
   let totalUpserted = 0;

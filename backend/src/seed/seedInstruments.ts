@@ -60,10 +60,4 @@ export const seedInstruments = async () => {
   const nordicInstruments = nordicResponse.data.instruments;
   await upsertInstruments(nordicInstruments);
   console.log(`✓ Seeded ${nordicInstruments.length} Nordic instruments`);
-
-  console.log("Seeding global instruments...");
-  const globalResponse = await api.get("/instruments/global");
-  const globalInstruments = globalResponse.data.instruments;
-  await upsertInstruments(globalInstruments);
-  console.log(`✓ Seeded ${globalInstruments.length} global instruments`);
 };
