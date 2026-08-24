@@ -4,6 +4,11 @@
 
 Vindros is a quant backtest app. The backend ingests Swedish stock market data from the [Börsdata API](https://apiservice.borsdata.se/v1) into a PostgreSQL database. The frontend is not yet started.
 
+Two strategy variants are implemented:
+
+- **Vindros Baseline (15-pos)** — 15 equal-weight positions, monthly rebalance
+- **Vindros Dynamic (3-slot)** — 3 concentrated positions with ADV overflow, A→B substitution. Chosen strategy after extensive backtesting.
+
 Domain knowledge for the financial KPIs (P/E, P/S, margins, etc.) is documented in [docs/kpi-guide.md](docs/kpi-guide.md).
 
 ## Tech Stack
@@ -27,16 +32,16 @@ npm run dev             # Express server on :4000
 
 ## Key Commands (backend/)
 
-| Command | Purpose |
-|---------|---------|
-| `npm run setup` | Start Postgres container + run Prisma migrations |
-| `npm run seed` | Seed all data (resumable via progress JSON files) |
-| `npm run dev` | Start Express dev server |
-| `npm run prisma:migrate` | Run `prisma migrate dev` |
-| `npm run prisma:studio` | Open Prisma Studio GUI |
-| `npm run clear:prices` | Clear stock price data |
-| `npm run update:prices` | Fetch latest stock prices for all instruments |
-| `npm run start:all` | Dev server + Prisma Studio concurrently |
+| Command                  | Purpose                                           |
+| ------------------------ | ------------------------------------------------- |
+| `npm run setup`          | Start Postgres container + run Prisma migrations  |
+| `npm run seed`           | Seed all data (resumable via progress JSON files) |
+| `npm run dev`            | Start Express dev server                          |
+| `npm run prisma:migrate` | Run `prisma migrate dev`                          |
+| `npm run prisma:studio`  | Open Prisma Studio GUI                            |
+| `npm run clear:prices`   | Clear stock price data                            |
+| `npm run update:prices`  | Fetch latest stock prices for all instruments     |
+| `npm run start:all`      | Dev server + Prisma Studio concurrently           |
 
 ## Architecture
 
@@ -52,6 +57,10 @@ backend/
       prisma.ts                # Prisma client singleton
       progress.ts              # Resumable seed progress tracker
       chunks.ts                # Array chunking utility
+    backtest/
+      utils.ts                 # Shared: linearRegression, sma, ema, ATR
+      vindros_analysis.ts      # Baseline 15-pos backtest
+      vindros_dynamic.ts       # Dynamic 3-slot backtest (chosen strategy)
     seed/                      # Seed scripts (run in order via main.ts)
     scripts/                   # One-off maintenance scripts
 frontend/                      # Not started yet
@@ -76,6 +85,6 @@ After schema changes, run `npm run prisma:migrate` from `backend/`.
 - Seed scripts are **resumable**: progress is tracked in `*-progress.json` files at `backend/`. Run `npm run seed` multiple times to complete large imports.
 - Seed order matters (countries → markets → sectors → instruments → kpiMetadata → stockPrices → kpiValues)
 - The Börsdata API has rate limits; seed scripts use batching and chunk processing
-- Docker container: `vindros_quant_db` (Postgres user/pass/db: `postgres`/`postgres`/`vindros_quant_db`)
+- Docker container: `vindros_quant_container` (Postgres user/pass/db: `postgres`/`postgres`/`vindros_quant`)
 - `ts-node` is used for all dev execution (no build step needed during development)
 - No test framework yet

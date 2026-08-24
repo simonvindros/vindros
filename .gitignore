@@ -7,8 +7,8 @@ build/
 
 # Generated outputs (re-created on every run)
 backend/**/*_output.txt
-backend/vindros_signals.txt
-backend/v5_output.txt
+backend/**/*_output_*.txt
+backend/vindros_dynamic_signals.txt
 backend/vindros_portfolio.json
 
 # Seed progress (machine-specific state)
