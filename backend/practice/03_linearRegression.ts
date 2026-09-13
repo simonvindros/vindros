@@ -56,7 +56,7 @@ function linearRegression(prices: number[]): { slope: number; r2: number } {
   const sigmaXiYi = logOfPrices.reduce((acc, price, i) => {
     return acc + i * price;
   }, 0);
-  const sigmaXsq = logOfPrices.reduce((acc, price, i) => {
+  const sigmaXsq = logOfPrices.reduce((acc, _, i) => {
     return acc + Math.pow(i, 2);
   }, 0);
 

@@ -23,6 +23,7 @@ const getWeekdays = (start: Date, end: Date): string[] => {
 };
 
 const BATCH_SIZE = 30; // Process 30 days at a time, then release memory
+const GAP_LOOKBACK_DAYS = 30;
 
 let knownInstrumentIds: Set<number>;
 
@@ -35,52 +36,53 @@ const loadKnownInstruments = async () => {
 };
 
 const backfillGap = async () => {
-  // Find the latest date among ACTIVE instruments (those with data in last 30 days),
-  // ignoring long-dead stocks that would trigger a multi-year backfill
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const cutoff = thirtyDaysAgo.toISOString().slice(0, 10);
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() - 1);
+  endDate.setUTCHours(0, 0, 0, 0);
 
-  const result = await prisma.$queryRaw<[{ min_date: Date | null }]>`
-    SELECT MIN(latest)::date as min_date FROM (
-      SELECT "instrumentId", MAX(date) as latest
-      FROM "StockPrice"
-      GROUP BY "instrumentId"
-      HAVING MAX(date) > ${cutoff}::date
-    ) sub
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - GAP_LOOKBACK_DAYS);
+  startDate.setUTCHours(0, 0, 0, 0);
+
+  const existingDates = await prisma.$queryRaw<Array<{ day: Date }>>`
+    SELECT DISTINCT date::date AS day
+    FROM "StockPrice"
+    WHERE date >= ${startDate}
+      AND date <= ${endDate}
+    ORDER BY day
   `;
 
-  const latestDate = result[0]?.min_date;
+  const existingDateKeys = new Set(
+    existingDates.map((row) => row.day.toISOString().slice(0, 10)),
+  );
 
-  if (!latestDate) {
-    console.log("  No existing prices — skipping backfill");
-    return;
-  }
+  const expectedDates = getWeekdays(
+    new Date(startDate.getTime() - 86400000),
+    endDate,
+  );
+  const missingDates = expectedDates.filter(
+    (date) => !existingDateKeys.has(date),
+  );
 
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const allDates = getWeekdays(latestDate, yesterday);
-
-  if (allDates.length === 0) {
-    console.log("  Prices are up to date — no gap to fill");
+  if (missingDates.length === 0) {
+    console.log("  No missing recent weekdays — skipping backfill");
     return;
   }
 
   console.log(
-    `  Backfilling ${allDates.length} days: ${allDates[0]} → ${allDates[allDates.length - 1]}`,
+    `  Backfilling ${missingDates.length} missing days: ${missingDates[0]} → ${missingDates[missingDates.length - 1]}`,
   );
   let totalInserted = 0;
 
   // Process in batches to avoid OOM
   for (
     let batchStart = 0;
-    batchStart < allDates.length;
+    batchStart < missingDates.length;
     batchStart += BATCH_SIZE
   ) {
-    const batch = allDates.slice(batchStart, batchStart + BATCH_SIZE);
+    const batch = missingDates.slice(batchStart, batchStart + BATCH_SIZE);
     console.log(
-      `\n  Batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(allDates.length / BATCH_SIZE)} (${batch[0]} → ${batch[batch.length - 1]})`,
+      `\n  Batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(missingDates.length / BATCH_SIZE)} (${batch[0]} → ${batch[batch.length - 1]})`,
     );
 
     for (const date of batch) {
