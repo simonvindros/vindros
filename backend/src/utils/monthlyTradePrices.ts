@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 
-export const extractSellAndBuy = async (
+export const getMonthlyOpenAndClose = async (
   instrumentId: number,
   startDate: Date,
   endDate: Date,
@@ -29,7 +29,7 @@ export const extractSellAndBuy = async (
       instrumentId,
       date: {
         gt: startDate,
-        lt: endDate, // we sell on first day of next month, update this to lte if we change strat
+        lt: endDate,
       },
     },
 

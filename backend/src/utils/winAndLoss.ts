@@ -35,5 +35,5 @@ export const formatReturnCash = (
   const cash = sell - buy;
   const sign = cash > 0 ? "+" : "";
 
-  return `${sign}${cash.toFixed(1)}%`;
+  return `${sign}${cash.toFixed(1)} sek`;
 };

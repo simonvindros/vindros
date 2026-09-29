@@ -3,7 +3,7 @@ import { prisma } from "../lib/prisma";
 import { linearRegression } from "../utils/linearRegression";
 import { rankBySlope } from "../utils/rankBySlope";
 import { formatReturnCash, formatReturnPercentage } from "../utils/winAndLoss";
-import { extractSellAndBuy } from "../utils/monthlyTradePrices";
+import { getMonthlyOpenAndClose } from "../utils/monthlyTradePrices";
 import { createMonthRanges } from "../utils/createMonthRanges";
 
 const executeVindros = async (
@@ -73,41 +73,15 @@ const executeVindros = async (
 
       const topTen = rankBySlope(instrumentLinearRegressionMap).slice(0, 10);
 
-      const instrumentIdBuyPrice = new Map<
+      const instrumentIdBuyAndSell = new Map<
         number,
-        { date: string; price: number }
+        {
+          companyName?: string;
+          buy: { date: string; price: number };
+          sell: { date: string; price: number };
+        }
       >();
 
-      for (const instrument of topTen) {
-        const { instrumentId, buyPrice } = await extractSellAndBuy(
-          instrument.instrumentId,
-          month.start,
-          month.end,
-        );
-        instrumentIdBuyPrice.set(instrumentId, {
-          date: new Date(buyPrice?.date ?? "").toDateString(),
-          price: Number(buyPrice?.open),
-        });
-      }
-
-      const instrumentIdSellPrice = new Map<
-        number,
-        { date: string; price: number }
-      >();
-
-      for (const instrument of topTen) {
-        const { instrumentId, sellPrice } = await extractSellAndBuy(
-          instrument.instrumentId,
-          month.start,
-          month.end,
-        );
-        instrumentIdSellPrice.set(instrumentId, {
-          date: new Date(sellPrice?.date ?? "").toDateString(),
-          price: Number(sellPrice?.close),
-        });
-      }
-
-      // TODO: replace id with company name later
       for (const instrument of topTen) {
         const companyName = await prisma.instrument.findUnique({
           where: {
@@ -117,41 +91,70 @@ const executeVindros = async (
             name: true,
           },
         });
+        const { instrumentId, buyPrice, sellPrice } =
+          await getMonthlyOpenAndClose(
+            instrument.instrumentId,
+            month.start,
+            month.end,
+          );
+        instrumentIdBuyAndSell.set(instrumentId, {
+          companyName: companyName?.name,
+          buy: {
+            date: new Date(buyPrice?.date ?? "").toDateString(),
+            price: Number(buyPrice?.open),
+          },
+          sell: {
+            date: new Date(sellPrice?.date ?? "").toDateString(),
+            price: Number(sellPrice?.close),
+          },
+        });
       }
 
       const buyAndSellPricePerInstrument = topTen.map(({ instrumentId }) => ({
         instrumentId,
-        buyDate: instrumentIdBuyPrice.get(instrumentId)?.date,
-        buy: instrumentIdBuyPrice.get(instrumentId)?.price,
-        sellDate: instrumentIdSellPrice.get(instrumentId)?.date,
-        sell: instrumentIdSellPrice.get(instrumentId)?.price,
+        companyName: instrumentIdBuyAndSell.get(instrumentId)?.companyName,
+        buyDate: instrumentIdBuyAndSell.get(instrumentId)?.buy.date,
+        buyPrice: instrumentIdBuyAndSell.get(instrumentId)?.buy.price,
+        sellDate: instrumentIdBuyAndSell.get(instrumentId)?.sell.date,
+        sellPrice: instrumentIdBuyAndSell.get(instrumentId)?.sell.price,
         winLossCash: formatReturnCash(
-          instrumentIdBuyPrice.get(instrumentId)?.price,
-          instrumentIdSellPrice.get(instrumentId)?.price,
+          instrumentIdBuyAndSell.get(instrumentId)?.buy.price,
+          instrumentIdBuyAndSell.get(instrumentId)?.sell.price,
         ),
         winLossPercentage: formatReturnPercentage(
-          instrumentIdBuyPrice.get(instrumentId)?.price,
-          instrumentIdSellPrice.get(instrumentId)?.price,
+          instrumentIdBuyAndSell.get(instrumentId)?.buy.price,
+          instrumentIdBuyAndSell.get(instrumentId)?.sell.price,
         ),
       }));
 
+      console.table(buyAndSellPricePerInstrument, [
+        "instrumentId",
+        "companyName",
+        "buyDate",
+        "buyPrice",
+        "sellDate",
+        "sellPrice",
+        "winLossCash",
+        "winLossPercentage",
+      ]);
+
       const monthlyReturn =
         buyAndSellPricePerInstrument.reduce((sum, stock) => {
-          const { buy, sell, instrumentId } = stock;
+          const { buyPrice, sellPrice, instrumentId } = stock;
 
           if (
-            buy === undefined ||
-            sell === undefined ||
-            !Number.isFinite(buy) ||
-            !Number.isFinite(sell) ||
-            buy <= 0
+            buyPrice === undefined ||
+            sellPrice === undefined ||
+            !Number.isFinite(buyPrice) ||
+            !Number.isFinite(sellPrice) ||
+            buyPrice <= 0
           ) {
             throw new Error(
               `Missing or invalid price for instrument ${instrumentId}`,
             );
           }
 
-          return sum + (sell / buy - 1);
+          return sum + (sellPrice / buyPrice - 1);
         }, 0) / buyAndSellPricePerInstrument.length;
 
       portfolioValue *= 1 + monthlyReturn;
