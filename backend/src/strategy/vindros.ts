@@ -5,6 +5,7 @@ import { rankBySlope } from "../utils/rankBySlope";
 import { formatReturnCash, formatReturnPercentage } from "../utils/winAndLoss";
 import { getMonthlyOpenAndClose } from "../utils/monthlyTradePrices";
 import { createMonthRanges } from "../utils/createMonthRanges";
+import { calculateEndOfMonthPortfolioValue } from "../utils/calculateEndOfMonthPortfolioValue";
 
 const executeVindros = async (
   startingAmount: number,
@@ -91,7 +92,7 @@ const executeVindros = async (
             name: true,
           },
         });
-        const { instrumentId, buyPrice, sellPrice } =
+        const { instrumentId, monthlyOpen, monthlyClose } =
           await getMonthlyOpenAndClose(
             instrument.instrumentId,
             month.start,
@@ -100,12 +101,12 @@ const executeVindros = async (
         instrumentIdBuyAndSell.set(instrumentId, {
           companyName: companyName?.name,
           buy: {
-            date: new Date(buyPrice?.date ?? "").toDateString(),
-            price: Number(buyPrice?.open),
+            date: new Date(monthlyOpen?.date ?? "").toDateString(),
+            price: Number(monthlyOpen?.open),
           },
           sell: {
-            date: new Date(sellPrice?.date ?? "").toDateString(),
-            price: Number(sellPrice?.close),
+            date: new Date(monthlyClose?.date ?? "").toDateString(),
+            price: Number(monthlyClose?.close),
           },
         });
       }
@@ -138,28 +139,15 @@ const executeVindros = async (
         "winLossPercentage",
       ]);
 
-      const monthlyReturn =
-        buyAndSellPricePerInstrument.reduce((sum, stock) => {
-          const { buyPrice, sellPrice, instrumentId } = stock;
-
-          if (
-            buyPrice === undefined ||
-            sellPrice === undefined ||
-            !Number.isFinite(buyPrice) ||
-            !Number.isFinite(sellPrice) ||
-            buyPrice <= 0
-          ) {
-            throw new Error(
-              `Missing or invalid price for instrument ${instrumentId}`,
-            );
-          }
-
-          return sum + (sellPrice / buyPrice - 1);
-        }, 0) / buyAndSellPricePerInstrument.length;
-
-      portfolioValue *= 1 + monthlyReturn;
-
-      portfolioValue += monthlyDeposit;
+      portfolioValue = calculateEndOfMonthPortfolioValue(
+        portfolioValue,
+        monthlyDeposit,
+        buyAndSellPricePerInstrument.map((instrument) => ({
+          instrumentId: instrument.instrumentId,
+          buyPrice: instrument.buyPrice,
+          sellPrice: instrument.sellPrice,
+        })),
+      );
     }
 
     console.table(portfolioValue);

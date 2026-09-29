@@ -5,7 +5,7 @@ export const getMonthlyOpenAndClose = async (
   startDate: Date,
   endDate: Date,
 ) => {
-  const buyPrice = await prisma.stockPrice.findFirst({
+  const monthlyOpen = await prisma.stockPrice.findFirst({
     where: {
       instrumentId,
       date: {
@@ -24,7 +24,7 @@ export const getMonthlyOpenAndClose = async (
     },
   });
 
-  const sellPrice = await prisma.stockPrice.findFirst({
+  const monthlyClose = await prisma.stockPrice.findFirst({
     where: {
       instrumentId,
       date: {
@@ -45,7 +45,7 @@ export const getMonthlyOpenAndClose = async (
 
   return {
     instrumentId,
-    buyPrice,
-    sellPrice,
+    monthlyOpen,
+    monthlyClose,
   };
 };
