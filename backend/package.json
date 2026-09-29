@@ -22,7 +22,8 @@
     "update:prices": "ts-node src/scripts/updatePrices.ts",
     "update:kpis": "ts-node src/scripts/updateKpis.ts",
     "reseed:kpis": "ts-node src/scripts/reseedKpiHistory.ts",
-    "vindros": "NODE_OPTIONS=--max-old-space-size=4096 ts-node src/strategy/vindros.ts"
+    "vindros": "NODE_OPTIONS=--max-old-space-size=4096 ts-node src/strategy/vindros.ts",
+    "audit:reports": "ts-node src/scripts/auditReportEvents.ts"
   },
   "keywords": [],
   "author": "",
