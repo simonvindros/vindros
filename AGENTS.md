@@ -7,14 +7,14 @@ Vindros is a quant backtest app. The backend ingests Swedish stock market data f
 Two strategy variants are implemented:
 
 - **Vindros Baseline (15-pos)** — 15 equal-weight positions, monthly rebalance
-- **Vindros Dynamic (3-slot)** — 3 concentrated positions with ADV overflow, A→B substitution. Chosen strategy after extensive backtesting.
+- **Vindros Dynamic (3-slot)** — 3 concentrated positions with ADV overflow, A→B substitution. Kept running as a paper-trade baseline; current research direction is measuring individual signals (Information Coefficient) before building a new portfolio strategy — see [docs/quant-curriculum.md](docs/quant-curriculum.md) and [docs/signal-ic-results.md](docs/signal-ic-results.md).
 
 Domain knowledge for the financial KPIs (P/E, P/S, margins, etc.) is documented in [docs/kpi-guide.md](docs/kpi-guide.md).
 
 ## Tech Stack
 
 - **Backend**: TypeScript, Express, Prisma 7 (with `@prisma/adapter-pg`)
-- **GraphQL**: Apollo Server (dependency added, not yet wired up — planned next)
+- **GraphQL**: Apollo Server, wired up in `src/index.ts` and served at `/graphql`
 - **Database**: PostgreSQL 15 (Docker)
 - **Runtime**: Node.js with CommonJS modules (`"type": "commonjs"` in package.json)
 - **Target**: ES2020
@@ -51,18 +51,18 @@ backend/
   generated/prisma/            # Generated Prisma client (do not edit)
   src/
     index.ts                   # Express + Apollo Server entrypoint
+    graphql/                   # typeDefs + resolvers
     config/kpiCombinations.ts  # KPI filter definitions
     lib/
       api.ts                   # Axios client for Börsdata API
       prisma.ts                # Prisma client singleton
       progress.ts              # Resumable seed progress tracker
       chunks.ts                # Array chunking utility
-    backtest/
-      utils.ts                 # Shared: linearRegression, sma, ema, ATR
-      vindros_analysis.ts      # Baseline 15-pos backtest
-      vindros_dynamic.ts       # Dynamic 3-slot backtest (chosen strategy)
+    strategy/
+      vindros.ts               # Signal ranking + monthly portfolio simulation
+    utils/                     # Pure, tested helpers (regression, portfolio math, etc.)
     seed/                      # Seed scripts (run in order via main.ts)
-    scripts/                   # One-off maintenance scripts
+    scripts/                   # Incremental update / maintenance scripts
 frontend/                      # Not started yet
 ```
 
