@@ -94,9 +94,10 @@ export const seedStockPrices = async (countryId?: number) => {
       chunk.forEach((id) => completedIds.add(String(id)));
 
       saveProgress(STOCK_PROGRESS_FILE, completedIds);
-      batchesProcessed++;
     } catch (error) {
       console.error(`Batch ${i + 1} failed:`, error);
+    } finally {
+      batchesProcessed++;
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));

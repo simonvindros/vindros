@@ -167,11 +167,11 @@ const fetchLatest = async () => {
  * RS (reverse split) 1:10 → 10 old shares become 1, price multiplies by 10 → factor 10
  */
 const parseRatioFactor = (splitType: string, ratio: string): number => {
-  const parts = ratio.split(":");
+  const parts = ratio.replace(",", ".").split(":");
   if (parts.length !== 2) return 1;
 
-  const left = parseFloat(parts[0]);
-  const right = parseFloat(parts[1]);
+  const left = Number.parseFloat(parts[0]);
+  const right = Number.parseFloat(parts[1]);
   if (!left || !right) return 1;
 
   // For splits (S, F, D): you get more shares, price goes down

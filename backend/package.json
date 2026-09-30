@@ -17,13 +17,15 @@
     "seed:reports": "cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/seed/seedQuarterlyReports.ts",
     "update:reports": "cross-env NODE_OPTIONS=--max-old-space-size=4096 ts-node src/scripts/updateQuarterlyReports.ts",
     "clear:prices": "ts-node src/scripts/clear.ts",
-    "update": "npm run update:instruments && npm run update:prices && npm run update:kpis && npm run vindros:dynamic",
     "update:instruments": "ts-node src/scripts/updateInstruments.ts",
     "update:prices": "ts-node src/scripts/updatePrices.ts",
     "update:kpis": "ts-node src/scripts/updateKpis.ts",
     "reseed:kpis": "ts-node src/scripts/reseedKpiHistory.ts",
     "vindros": "NODE_OPTIONS=--max-old-space-size=4096 ts-node src/strategy/vindros.ts",
-    "audit:reports": "ts-node src/scripts/auditReportEvents.ts"
+    "test": "node --test --require ts-node/register src/**/*.test.ts",
+    "audit:prices": "ts-node src/scripts/auditPrices.ts",
+    "check:data": "ts-node src/scripts/checkData.ts",
+    "compute:indicators": "ts-node src/scripts/computeIndicators.ts"
   },
   "keywords": [],
   "author": "",

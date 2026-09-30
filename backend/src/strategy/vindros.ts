@@ -157,8 +157,8 @@ const executeVindros = async (
 };
 
 executeVindros(
-  10000,
-  10000,
+  10_000,
+  10_000,
   1,
   [1, 2],
   new Date("2020-01-01T00:00:00.000Z"),

@@ -77,10 +77,11 @@ export const seedKpiValues = async () => {
         // Mark as complete regardless of whether there was data
         completed.add(key);
         saveProgress(KPI_PROGRESS_FILE, completed);
-        callsThisRun++;
       } catch (error) {
         // Silently skip — instrument may not have this KPI
         console.log(`Skipping ${key} due to error:`, error);
+      } finally {
+        callsThisRun++;
       }
 
       await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
