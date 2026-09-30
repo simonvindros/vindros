@@ -13,3 +13,6 @@ backend/vindros_portfolio.json
 
 # Seed progress (machine-specific state)
 backend/*-progress.json
+
+# Private, one-off data-import script (not for public repo)
+backend/src/scripts/importColleagueData.ts
