@@ -13,7 +13,7 @@ Vindros pulls Swedish (and broader Nordic) stock market data, daily prices, fund
 
 ## Status
 
-The original "Vindros Dynamic" concentrated-momentum strategy is still running as a paper-trade baseline. Right now the focus is measuring individual signals (profitability, momentum, value) with Information Coefficient, before building any new portfolio strategy. See [docs/quant-curriculum.md](docs/quant-curriculum.md) and [docs/signal-ic-results.md](docs/signal-ic-results.md).
+Scaled back and under construction. The earlier "Vindros Dynamic" concentrated-momentum strategy has been retired. Right now the focus is measuring individual signals (profitability, momentum, value) with Information Coefficient, before building any new portfolio strategy. See [docs/quant-curriculum.md](docs/quant-curriculum.md) and [docs/signal-ic-results.md](docs/signal-ic-results.md).
 
 ## Getting started
 

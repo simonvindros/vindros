@@ -14,5 +14,9 @@ backend/vindros_portfolio.json
 # Seed progress (machine-specific state)
 backend/*-progress.json
 
+# KPI update state (machine-specific)
+backend/kpi-last-updated.json
+backend/kpi-failed-batches.json
+
 # Private, one-off data-import script (not for public repo)
 backend/src/scripts/importColleagueData.ts

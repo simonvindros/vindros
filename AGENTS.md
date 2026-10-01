@@ -4,10 +4,7 @@
 
 Vindros is a quant backtest app. The backend ingests Swedish stock market data from the [Börsdata API](https://apiservice.borsdata.se/v1) into a PostgreSQL database. The frontend is not yet started.
 
-Two strategy variants are implemented:
-
-- **Vindros Baseline (15-pos)** — 15 equal-weight positions, monthly rebalance
-- **Vindros Dynamic (3-slot)** — 3 concentrated positions with ADV overflow, A→B substitution. Kept running as a paper-trade baseline; current research direction is measuring individual signals (Information Coefficient) before building a new portfolio strategy — see [docs/quant-curriculum.md](docs/quant-curriculum.md) and [docs/signal-ic-results.md](docs/signal-ic-results.md).
+The strategy layer is scaled back and under construction. `src/strategy/vindros.ts` implements a baseline signal-ranking + monthly portfolio simulation (equal-weight positions, monthly rebalance). The earlier "Vindros Dynamic" (3-slot concentrated) variant has been retired; current research direction is measuring individual signals (Information Coefficient) before building a new portfolio strategy — see [docs/quant-curriculum.md](docs/quant-curriculum.md) and [docs/signal-ic-results.md](docs/signal-ic-results.md).
 
 Domain knowledge for the financial KPIs (P/E, P/S, margins, etc.) is documented in [docs/kpi-guide.md](docs/kpi-guide.md).
 
